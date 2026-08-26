@@ -1,0 +1,10 @@
+services:
+  employment-management:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: employment-management:latest
+    container_name: employment-management
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.class
+*.log
+*.jar
+!**/src/**/*.jar
+.DS_Store
+Thumbs.db
+*.swp
+.env
+.env.*
+!/.env.example
