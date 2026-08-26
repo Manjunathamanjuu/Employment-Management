@@ -1,0 +1,23 @@
+# This HTTPRoute attaches to Gateway "employment-management-gateway".
+# That Gateway is not created by these four manifests and must already
+# exist in the target GKE cluster (default namespace) for this route
+# to become active. Do not invent or assume a live Gateway object here.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: employment-management
+  labels:
+    app: employment-management
+spec:
+  parentRefs:
+    - name: employment-management-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: employment-management
+          port: 8080
