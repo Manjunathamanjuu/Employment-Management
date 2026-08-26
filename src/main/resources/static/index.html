@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employment Management</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-text">
+            <h1>💼 Employment Management</h1>
+            <p class="subtitle">Spring Boot CRUD Practice Application</p>
+        </div>
+        <div id="api-status" class="api-status disconnected" role="status">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="api-status-text">API Disconnected</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="stats" aria-label="Dashboard statistics">
+            <article class="stat-card">
+                <h2>Total Employees</h2>
+                <p id="stat-total" class="stat-value">0</p>
+            </article>
+            <article class="stat-card">
+                <h2>Average Experience</h2>
+                <p id="stat-average" class="stat-value">0 Years</p>
+            </article>
+            <article class="stat-card">
+                <h2>Storage Status</h2>
+                <p id="stat-storage" class="stat-value">In-Memory Active</p>
+            </article>
+        </section>
+
+        <section class="card form-card">
+            <h2 id="form-title">Add Employee</h2>
+            <form id="employee-form" novalidate>
+                <div class="form-grid">
+                    <label>
+                        Name
+                        <input id="name" name="name" type="text" maxlength="100" placeholder="Enter employee name" required>
+                    </label>
+                    <label>
+                        Occupation
+                        <input id="occupation" name="occupation" type="text" maxlength="100" placeholder="Enter occupation" required>
+                    </label>
+                    <label>
+                        Email
+                        <input id="email" name="email" type="email" maxlength="255" placeholder="Enter email address" required>
+                    </label>
+                    <label>
+                        Years of Experience
+                        <input id="yearsOfExperience" name="yearsOfExperience" type="number" min="0" max="80" placeholder="Enter years of experience" required>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="submit-button" class="btn btn-primary">Add Employee</button>
+                    <button type="button" id="clear-button" class="btn btn-secondary">Clear</button>
+                    <button type="button" id="cancel-edit-button" class="btn btn-ghost hidden">Cancel Edit</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card table-card">
+            <div class="table-header">
+                <h2>Employees</h2>
+                <label class="search-label">
+                    <span class="visually-hidden">Search employees</span>
+                    <input id="search" type="search" placeholder="Search employees...">
+                </label>
+            </div>
+            <div id="loading" class="loading hidden" role="status">
+                <span class="spinner" aria-hidden="true"></span>
+                Loading...
+            </div>
+            <div id="empty-state" class="empty-state hidden">
+                <p class="empty-icon" aria-hidden="true">💼</p>
+                <h3>No Employees Found</h3>
+                <p>Add your first employee to get started.</p>
+                <button type="button" id="empty-add-button" class="btn btn-primary">Add Employee</button>
+            </div>
+            <div id="table-wrap" class="table-wrap hidden">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Occupation</th>
+                            <th>Email</th>
+                            <th>Experience</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employee-tbody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <h2 id="modal-title">Delete Employee?</h2>
+            <p id="modal-message"></p>
+            <p class="modal-warning">This action cannot be undone.</p>
+            <div class="form-actions">
+                <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="modal-confirm" class="btn btn-danger">Delete Employee</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <script src="script.js"></script>
+</body>
+</html>

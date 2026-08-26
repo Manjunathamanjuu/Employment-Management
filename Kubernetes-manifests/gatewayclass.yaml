@@ -1,0 +1,9 @@
+# GKE typically pre-installs this GatewayClass on Gateway API-enabled clusters.
+# Apply this manifest only if the class is missing. Do not recreate cluster
+# infrastructure that GKE already manages.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: gke-l7-global-external-managed
+spec:
+  controllerName: networking.gke.io/gateway
