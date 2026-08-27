@@ -181,16 +181,71 @@ async def troubleshoot(
 @router.post(
     "/api/v1/approve",
     response_model=dict,
-    summary="Submit a human approval decision",
+    summary="Submit a human approval decision for a remediation plan",
     tags=["agent"],
 )
-async def approve(body: ApprovalRequest) -> dict:
-    """Accept a human approval (or rejection) for a planned remediation.
+async def approve(body: ApprovalRequest, request: Request) -> dict:
+    """Record a human approval or rejection for a planned remediation.
 
-    Full approval workflow is wired in Phase 8.
+    Rules enforced:
+    - Approver must be a named, non-anonymous human.
+    - Only PENDING approvals can be decided.
+    - Decisions are final (REJECTED cannot become APPROVED).
+    - APPROVED records unlock the remediation executor.
     """
-    return {
+    from app.approval.service import ApprovalError, get_approval_service
+
+    req_id = str(uuid.uuid4())
+    log_extra = {
         "request_id": body.request_id,
-        "status": "APPROVAL_RECORDED",
-        "approved": body.approved,
+        "agent_node": "api.approve",
+        "status": "received",
     }
+    logger.info("Approval decision received", extra=log_extra)
+
+    service = get_approval_service()
+
+    # Ensure a pending record exists (create if missing — idempotent)
+    try:
+        service.create_pending(body.request_id)
+    except ApprovalError:
+        pass  # Record already exists — that's fine
+
+    try:
+        record = service.submit_decision(
+            request_id=body.request_id,
+            approved=body.approved,
+            approver=body.approver,
+            reason=body.reason,
+            approved_action_ids=body.approved_action_ids or None,
+        )
+        logger.info(
+            f"Approval decision recorded: {record.status.value}",
+            extra={
+                "request_id": body.request_id,
+                "agent_node": "api.approve",
+                "status": record.status.value.lower(),
+            },
+        )
+        return {
+            "request_id": body.request_id,
+            "approval_id": record.approval_id,
+            "status": record.status.value,
+            "approved": body.approved,
+            "approver": body.approver,
+            "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+        }
+    except ApprovalError as exc:
+        logger.warning(
+            f"Approval error: {exc}",
+            extra={
+                "request_id": body.request_id,
+                "agent_node": "api.approve",
+                "status": "error",
+            },
+        )
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail={"error": str(exc), "code": "APPROVAL_ERROR"},
+        )

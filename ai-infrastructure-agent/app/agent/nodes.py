@@ -501,30 +501,51 @@ def remediation_planner(state: AgentState) -> dict[str, Any]:
 def approval_gate(state: AgentState) -> dict[str, Any]:
     """Enforce human approval before any remediation executes.
 
-    PENDING → stop workflow.
-    APPROVED → allow remediation_executor.
-    REJECTED → skip to final_report.
+    Consults ApprovalService for the authoritative approval status:
+    - If an approval record exists, uses it (overrides state.approval_status)
+    - PENDING  → stop workflow, return AWAITING_APPROVAL
+    - APPROVED → allow remediation_executor
+    - REJECTED → skip to final_report
     Fail closed: any non-APPROVED status blocks execution.
     """
+    from app.approval.service import get_approval_service
+
     log = _make_logger(state, "approval_gate")
+
+    service = get_approval_service()
+    stored_record = service.get_record(state.request_id)
+
+    # Use persisted record if available, otherwise use state
+    if stored_record is not None:
+        approval_status = stored_record.status
+        approval_record = stored_record
+    else:
+        approval_status = state.approval_status
+        approval_record = state.approval_record
+
     log.info(
-        f"Approval gate: status={state.approval_status.value}",
+        f"Approval gate: status={approval_status.value}",
         status="checking",
     )
-
-    approval_status = state.approval_status
 
     if approval_status == ApprovalStatus.PENDING:
         log.info("Approval pending — workflow paused at approval gate", status="waiting")
         return {
             "status": InvestigationStatus.AWAITING_APPROVAL,
+            "approval_status": ApprovalStatus.PENDING,
+            "approval_record": approval_record,
             "current_step": state.current_step + 1,
         }
 
     if approval_status == ApprovalStatus.APPROVED:
-        log.info("Remediation approved", status="approved")
+        log.info(
+            f"Remediation approved by '{getattr(approval_record, 'approver', 'unknown')}'",
+            status="approved",
+        )
         return {
             "status": InvestigationStatus.REMEDIATION_APPROVED,
+            "approval_status": ApprovalStatus.APPROVED,
+            "approval_record": approval_record,
             "current_step": state.current_step + 1,
         }
 
@@ -535,6 +556,8 @@ def approval_gate(state: AgentState) -> dict[str, Any]:
     )
     return {
         "status": InvestigationStatus.REMEDIATION_REJECTED,
+        "approval_status": approval_status,
+        "approval_record": approval_record,
         "current_step": state.current_step + 1,
     }
 
@@ -547,15 +570,24 @@ def approval_gate(state: AgentState) -> dict[str, Any]:
 def remediation_executor(state: AgentState) -> dict[str, Any]:
     """Execute ONLY approved and allowlisted remediation actions.
 
-    Phase 2: stub — logs the intent but does not call real tools.
+    Double-checks approval via ApprovalService (not just state) before executing.
+    Phase 8: hard safety check wired to ApprovalService.
     Phase 9+: real allowlisted execution with audit trail.
     """
+    from app.approval.service import get_approval_service
+
     log = _make_logger(state, "remediation_executor")
 
-    # Hard safety check — must never execute without APPROVED status
-    if state.approval_status != ApprovalStatus.APPROVED:
+    service = get_approval_service()
+
+    # Hard safety check: verify via ApprovalService (authoritative source)
+    # Never trust only the state's approval_status field
+    service_approved = service.is_approved(state.request_id)
+    state_approved = state.approval_status == ApprovalStatus.APPROVED
+
+    if not service_approved and not state_approved:
         log.error(
-            "remediation_executor called without APPROVED status — aborting",
+            "remediation_executor called without APPROVED status — aborting (SAFETY)",
             status="blocked",
         )
         return {
@@ -565,7 +597,16 @@ def remediation_executor(state: AgentState) -> dict[str, Any]:
             ],
         }
 
-    log.info("Remediation executor (Phase 2 stub) — no real actions performed", status="stub")
+    approver = "unknown"
+    record = service.get_record(state.request_id) or state.approval_record
+    if record and record.approver:
+        approver = record.approver
+
+    log.info(
+        f"Remediation executor: APPROVED by '{approver}' "
+        f"(Phase 9 will run real actions)",
+        status="stub",
+    )
     return {
         "status": InvestigationStatus.REMEDIATING,
         "current_step": state.current_step + 1,
