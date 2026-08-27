@@ -10,9 +10,15 @@ shell=False is enforced throughout.
 from __future__ import annotations
 
 import os
+import re
+from pathlib import Path
 
 from app.agent.state import ToolResult
-from app.tools.base import BaseTool, _DANGEROUS_CHARS
+from app.tools.base import BaseTool
+
+# Shell metacharacters only. Backslash is a path separator on Windows, so it is
+# not treated as injection for working_directory (unlike k8s/docker names).
+_PATH_INJECTION_CHARS = re.compile(r"[;&|`$<>\n\r\t\x00-\x1f]")
 
 # ---------------------------------------------------------------------------
 # Terraform-specific constants
@@ -83,14 +89,15 @@ def validate_working_directory(path: str) -> str:
     """
     if not path or not isinstance(path, str):
         raise ValueError("working_directory must be a non-empty string")
-    if _DANGEROUS_CHARS.search(path):
+    if _PATH_INJECTION_CHARS.search(path):
         raise ValueError(
             f"working_directory contains invalid characters: {path!r}"
         )
     # Resolve to absolute path and check for traversal
     resolved = os.path.realpath(os.path.abspath(path))
-    # Must not be the filesystem root
-    if resolved in ("/", "//"):
+    resolved_path = Path(resolved)
+    # POSIX `/` and Windows `C:\` both have parent == self
+    if resolved_path.parent == resolved_path:
         raise ValueError("working_directory cannot be the filesystem root")
     # Must exist
     if not os.path.isdir(resolved):

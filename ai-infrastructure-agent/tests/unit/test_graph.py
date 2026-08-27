@@ -33,6 +33,16 @@ _CRASH_STDOUT = (
 )
 
 
+class TestLangChainCompat:
+    def test_debug_attr_present_after_graph_import(self):
+        from app.agent.compat import ensure_langchain_debug_attr
+
+        ensure_langchain_debug_attr()
+        import langchain
+
+        assert hasattr(langchain, "debug")
+
+
 class TestGraphBuild:
     def test_graph_builds_without_error(self):
         from app.agent.graph import build_graph

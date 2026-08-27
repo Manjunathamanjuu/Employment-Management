@@ -158,6 +158,7 @@ ai-infrastructure-agent/
 │   ├── remediation/         # Allowlisted remediation executor (Phase 9)
 │   ├── verification/        # Post-remediation verification (Phase 10)
 │   └── logging/             # Structured JSON logger with secret scrubbing
+├── frontend/                # CloudOps operator UI (served at /)
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -181,18 +182,26 @@ ai-infrastructure-agent/
 
 ## Implementation Phases
 
+Product phases (0–16) are defined in
+[`docs/PHASE0_ARCHITECTURE_AUDIT.md`](docs/PHASE0_ARCHITECTURE_AUDIT.md).
+Git commits still use an older 1–13 backend numbering; use the audit for status.
+
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 | ✅ Complete | Foundation, configuration, models, logging, FastAPI, health/ready |
-| 2 | Pending | LangGraph core, typed state, workflow |
-| 3 | Pending | Kubernetes read-only tools |
-| 4 | Pending | Docker, GCP, Terraform tools |
-| 5 | Pending | Evidence correlation |
-| 6 | Pending | Root cause engine |
-| 7 | Pending | Remediation planner |
-| 8 | Pending | Human approval workflow |
-| 9 | Pending | Safe remediation execution |
-| 10 | Pending | Post-remediation verification |
-| 11 | Pending | Production security hardening |
-| 12 | Pending | Containerization |
-| 13 | Pending | Complete E2E testing |
+| 0 | ✅ Complete | Repository and architecture audit |
+| 1 | ✅ Complete | CloudOps FastAPI backend |
+| 2 | ✅ Complete | LangGraph agent; request-aware allowlisted tool selection |
+| 3 | ✅ Complete | Allowlisted K8s / Docker / GCP / Terraform tools (see audit gaps) |
+| 4 | ✅ Complete | Evidence collection and correlation |
+| 5 | ✅ Complete | Root cause analysis |
+| 6 | ✅ Complete | Safe remediation (plan, approval, execute, verify) |
+| 7 | ✅ Complete | CloudOps frontend (pages + UI tests) |
+| 8 | Partial | Hardening present; no API authentication |
+| 9 | ✅ Complete | Structured logging and request IDs |
+| 10 | Partial | Production Dockerfile; image omits frontend |
+| 11 | Not started | Local CloudOps Docker Compose |
+| 12 | Partial | 848 backend tests; no frontend tests |
+| 13 | Not started | Production security review |
+| 14 | Partial | Mocked E2E; no live local compose E2E |
+| 15 | ✅ Complete | Employment Management isolation regression |
+| 16 | Not started | Final production readiness review |

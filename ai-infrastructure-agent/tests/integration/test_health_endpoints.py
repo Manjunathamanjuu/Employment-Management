@@ -2,10 +2,33 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+import subprocess as sp
+
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
+_CRASHLOOP = (
+    "NAME                                    READY   STATUS             RESTARTS\n"
+    "employment-management-6d8f9b7c4-xkp2n   0/1     CrashLoopBackOff   5"
+)
+
+
+def _mock_proc(stdout: str = _CRASHLOOP, returncode: int = 0):
+    m = MagicMock(spec=sp.CompletedProcess)
+    m.stdout = stdout
+    m.stderr = ""
+    m.returncode = returncode
+    return m
+
+
+@pytest.fixture(autouse=True)
+def mock_infra_subprocesses():
+    """Keep /troubleshoot tests off the real cluster (kubectl/gcloud timeouts)."""
+    with patch("subprocess.run", return_value=_mock_proc()):
+        yield
 
 
 @pytest.fixture

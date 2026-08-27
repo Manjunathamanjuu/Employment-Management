@@ -115,10 +115,16 @@ class TestSecretNeverInAPIResponse:
         assert "OPENAI_API_KEY" not in body
 
     def test_troubleshoot_response_has_no_secret(self, client):
-        response = client.post(
-            "/api/v1/troubleshoot",
-            json={"request": "Why is my pod failing?"},
-        )
+        from unittest.mock import MagicMock, patch
+
+        with patch(
+            "subprocess.run",
+            return_value=MagicMock(stdout="NAME STATUS\npod Running", stderr="", returncode=0),
+        ):
+            response = client.post(
+                "/api/v1/troubleshoot",
+                json={"request": "Why is my pod failing?"},
+            )
         body = response.text
         assert "sk-test" not in body
         assert "OPENAI_API_KEY" not in body

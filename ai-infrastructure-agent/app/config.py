@@ -59,6 +59,11 @@ class Settings(BaseSettings):
         default=None, alias="KUBERNETES_CONTEXT"
     )
 
+    # Terraform — optional workspace for read-only validate/plan
+    terraform_working_directory: Optional[str] = Field(
+        default=None, alias="TERRAFORM_WORKING_DIRECTORY"
+    )
+
     # Tool timeouts (seconds)
     tool_timeout_seconds: int = Field(default=30, alias="TOOL_TIMEOUT_SECONDS")
     llm_timeout_seconds: int = Field(default=60, alias="LLM_TIMEOUT_SECONDS")

@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import os
+
+# Force-disable tracing. setdefault is not enough if the shell already
+# exported LANGCHAIN_TRACING_V2=true — graph.invoke then leaves LangSmith
+# background work that deadlocks FastAPI TestClient on Windows.
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,6 +28,10 @@ def clear_env_secrets(monkeypatch):
     routes_module.settings = cfg_module.settings
     import app.main as main_module
     main_module.settings = cfg_module.settings
+    from app.security import get_rate_limiter
+    get_rate_limiter().reset()
+    import app.agent.graph as graph_module
+    graph_module._compiled_graph = None
 
 
 @pytest.fixture

@@ -120,6 +120,12 @@ class TestValidateWorkingDirectory:
         with pytest.raises(ValueError):
             validate_working_directory("/")
 
+    @pytest.mark.skipif(os.name != "nt", reason="Windows drive-root check")
+    def test_windows_drive_root_raises(self):
+        from app.tools.terraform.tools import validate_working_directory
+        with pytest.raises(ValueError, match="filesystem root"):
+            validate_working_directory("C:\\")
+
     def test_injection_in_path_raises(self):
         from app.tools.terraform.tools import validate_working_directory
         with pytest.raises(ValueError):

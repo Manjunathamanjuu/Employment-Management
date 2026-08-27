@@ -78,52 +78,24 @@ def request_analyzer(state: AgentState) -> dict[str, Any]:
 
 
 def investigation_planner(state: AgentState) -> dict[str, Any]:
-    """Generate an investigation plan.
+    """Generate an investigation plan from the user request.
 
-    In Phase 2 this produces a deterministic mock plan.
-    Phase 3+ will call the LLM with the user request to produce a real plan.
+    Selects allowlisted existing tools only. The LLM may suggest names from
+    that allowlist; it never executes commands. Heuristic fallback is used
+    when the LLM is unavailable or fails.
     """
+    from app.agent.planner import build_investigation_plan
+
     log = _make_logger(state, "investigation_planner")
     log.info("Planning investigation", status="started")
 
-    # Phase 2 mock plan — deterministic, no LLM call.
-    # Note: tools requiring a specific resource name (describe_pod, get_pod_logs)
-    # are added dynamically in Phase 5+ once pod names are discovered.
-    steps = [
-        InvestigationStep(
-            description="List pods in namespace",
-            tool="get_pods",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-        InvestigationStep(
-            description="Check recent Kubernetes events",
-            tool="get_events",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-        InvestigationStep(
-            description="List deployments in namespace",
-            tool="get_deployment",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-        InvestigationStep(
-            description="List services in namespace",
-            tool="get_service",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-    ]
-
-    plan = InvestigationPlan(
-        summary=(
-            f"Investigate infrastructure issue: '{state.user_request[:100]}'. "
-            "Collect pod status, events, deployments, and services "
-            "from the employment-management namespace."
-        ),
-        steps=steps,
-        estimated_tools=["get_pods", "get_events", "get_deployment", "get_service"],
+    plan = build_investigation_plan(
+        state.user_request,
+        namespace=settings.kubernetes_namespace,
     )
 
     log.info(
-        f"Investigation plan created with {len(steps)} steps",
+        f"Investigation plan created with {len(plan.steps)} steps",
         status="completed",
     )
     return {
@@ -199,6 +171,14 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
                 error=str(exc),
                 namespace=step.parameters.get("namespace"),
             )
+        except Exception as exc:
+            result = ToolResult(
+                tool_name=tool_name,
+                status="error",
+                command_type="read",
+                error=f"Unexpected error: {type(exc).__name__}",
+                namespace=step.parameters.get("namespace"),
+            )
 
         step.status = "COMPLETED"
         step.result = result
@@ -208,6 +188,42 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
             status=result.status,
             execution_time=result.duration or 0.0,
         )
+
+    from app.agent.planner import follow_up_steps
+
+    extra = follow_up_steps(
+        tool_results,
+        [s.tool for s in plan.steps if s.tool],
+        namespace=settings.kubernetes_namespace,
+    )
+    for step in extra:
+        plan.steps.append(step)
+        tool_name = step.tool or "unknown"
+        try:
+            if tool_name in KUBERNETES_TOOLS:
+                tool = get_kubernetes_tool(tool_name, timeout=settings.tool_timeout_seconds)
+                result = tool.execute(**step.parameters)
+            else:
+                result = _mock_tool_result(tool_name, step.parameters)
+        except (ValueError, TypeError) as exc:
+            result = ToolResult(
+                tool_name=tool_name,
+                status="validation_error",
+                command_type="read",
+                error=str(exc),
+                namespace=step.parameters.get("namespace"),
+            )
+        except Exception as exc:
+            result = ToolResult(
+                tool_name=tool_name,
+                status="error",
+                command_type="read",
+                error=f"Unexpected error: {type(exc).__name__}",
+                namespace=step.parameters.get("namespace"),
+            )
+        step.status = "COMPLETED"
+        step.result = result
+        tool_results.append(result)
 
     return {
         "tool_results": tool_results,

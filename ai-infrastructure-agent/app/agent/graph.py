@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agent.compat import ensure_langchain_debug_attr
 from app.agent.nodes import (
     approval_gate,
     evidence_analyzer,
@@ -169,6 +170,7 @@ _compiled_graph = None
 def get_graph():
     """Return the singleton compiled graph (lazy init)."""
     global _compiled_graph
+    ensure_langchain_debug_attr()
     if _compiled_graph is None:
         logger.info(
             "Building LangGraph workflow",
@@ -186,6 +188,7 @@ def run_investigation(user_request: str, request_id: str | None = None) -> Agent
     """Run the full investigation workflow for a user request."""
     import uuid
 
+    ensure_langchain_debug_attr()
     req_id = request_id or str(uuid.uuid4())
 
     # Build the initial full state dict with all required AgentState fields

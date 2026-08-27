@@ -169,6 +169,7 @@ const NAV = [
   { id:'investigations', label:'Investigations',    icon:'search'  },
   { id:'infrastructure', label:'Infrastructure',    icon:'layers'  },
   { id:'incidents',      label:'Incidents',         icon:'alert'   },
+  { id:'remediation',    label:'Remediation',       icon:'shield'  },
   { id:'audit',          label:'Audit Logs',        icon:'log'     },
   { id:'settings',       label:'Settings',          icon:'gear'    },
 ];
@@ -208,7 +209,7 @@ function Sidebar({ page, setPage, dark, toggleDark, col, setCol }) {
 }
 
 // ─── Header ───────────────────────────────────────────────────────────────────
-const PAGE_LABELS = { dashboard:'Dashboard', troubleshooter:'AI Troubleshooter', investigations:'Investigations', infrastructure:'Infrastructure', incidents:'Incidents', audit:'Audit Logs', settings:'Settings' };
+const PAGE_LABELS = { dashboard:'Dashboard', troubleshooter:'AI Troubleshooter', investigations:'Investigations', infrastructure:'Infrastructure', incidents:'Incidents', remediation:'Remediation', audit:'Audit Logs', settings:'Settings' };
 function Header({ page, health, setPage }) {
   return html`
     <header class="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-6 flex-shrink-0">
@@ -945,6 +946,57 @@ function IncRow({ i }) {
   </${Card}>`;
 }
 
+// ─── Remediation queue — uses existing /api/v1/approve via RemediationPanel ───
+function RemediationQueue({ investigations, onSelect, setPage }) {
+  const withPlan = investigations.filter(i => i.remediation?.length);
+  const pending  = withPlan.filter(i => i.approval_status === 'PENDING');
+  const decided  = withPlan.filter(i => i.approval_status !== 'PENDING');
+  return html`<div class="p-6 fade-in">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-base font-bold text-slate-100">Remediation</h2>
+        <p class="text-xs text-slate-500 mt-1">Human approval is required before any infrastructure change executes.</p>
+      </div>
+      <${Badge} text=${pending.length + ' pending'} cls=${pending.length ? 'text-amber-400 bg-amber-500/20 border-amber-500/30' : 'text-slate-400 bg-slate-800 border-slate-700'}/>
+    </div>
+    ${!withPlan.length ? html`<${Empty} icon="shield" title="No remediation plans" desc="Run an investigation. If CloudOps AI recommends a change, it appears here for approval." action=${html`<button onClick=${() => setPage('troubleshooter')} class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg">Start Investigation</button>`}/>` :
+      html`<div class="space-y-6">
+        ${pending.length > 0 && html`
+          <div>
+            <h3 class="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3">Awaiting Approval (${pending.length})</h3>
+            <div class="space-y-2">
+              ${pending.map(i => html`
+                <${Card} key=${i.request_id} cls="p-4 cursor-pointer hover:border-slate-700 transition-colors" onClick=${() => onSelect(i)}>
+                  <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
+                      <${Icon} name="lock" cls="w-4 h-4"/>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-slate-200 truncate">${i.userRequest || i.request_id}</p>
+                      <p class="text-xs text-slate-500 mt-0.5">${i.remediation.length} action${i.remediation.length===1?'':'s'} · approval required</p>
+                    </div>
+                    <${Badge} text="PENDING" cls="text-amber-400 bg-amber-500/20 border-amber-500/30"/>
+                  </div>
+                </${Card}>`)}
+            </div>
+          </div>`}
+        ${decided.length > 0 && html`
+          <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Decided (${decided.length})</h3>
+            <div class="space-y-2">
+              ${decided.map(i => html`
+                <${Card} key=${i.request_id} cls="p-4 cursor-pointer hover:border-slate-700 transition-colors" onClick=${() => onSelect(i)}>
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm text-slate-300 truncate">${i.userRequest || i.request_id}</p>
+                    <${Badge} text=${i.approval_status} cls=${i.approval_status==='APPROVED' ? confVar('HIGH') : riskVar('HIGH')}/>
+                  </div>
+                </${Card}>`)}
+            </div>
+          </div>`}
+      </div>`}
+  </div>`;
+}
+
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 function AuditLogs({ investigations }) {
   const logs = investigations.flatMap(inv => [
@@ -1071,6 +1123,7 @@ function App() {
     if (page === 'investigations') return html`<${InvList} investigations=${investigations} onSelect=${onSelect}/>`;
     if (page === 'infrastructure') return html`<${Infrastructure}/>`;
     if (page === 'incidents')      return html`<${Incidents} investigations=${investigations} setPage=${navigate}/>`;
+    if (page === 'remediation')    return html`<${RemediationQueue} investigations=${investigations} onSelect=${onSelect} setPage=${navigate}/>`;
     if (page === 'audit')          return html`<${AuditLogs} investigations=${investigations}/>`;
     if (page === 'settings')       return html`<${Settings} health=${health} ready=${ready} dark=${dark} toggleDark=${toggleDark}/>`;
     return html`<${Dashboard} health=${health} ready=${ready} investigations=${investigations} setPage=${navigate}/>`;
