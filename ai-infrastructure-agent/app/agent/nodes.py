@@ -570,18 +570,20 @@ def approval_gate(state: AgentState) -> dict[str, Any]:
 def remediation_executor(state: AgentState) -> dict[str, Any]:
     """Execute ONLY approved and allowlisted remediation actions.
 
-    Double-checks approval via ApprovalService (not just state) before executing.
-    Phase 8: hard safety check wired to ApprovalService.
-    Phase 9+: real allowlisted execution with audit trail.
+    Uses RemediationExecutor which:
+    - Re-verifies approval via ApprovalService before every action
+    - Only dispatches to allowlisted tool implementations
+    - Validates all parameters (injection protection)
+    - Records an immutable audit entry for every action
+    - Captures partial failures without stopping the plan
     """
     from app.approval.service import get_approval_service
+    from app.remediation.executor import RemediationExecutor
 
     log = _make_logger(state, "remediation_executor")
-
     service = get_approval_service()
 
     # Hard safety check: verify via ApprovalService (authoritative source)
-    # Never trust only the state's approval_status field
     service_approved = service.is_approved(state.request_id)
     state_approved = state.approval_status == ApprovalStatus.APPROVED
 
@@ -597,17 +599,38 @@ def remediation_executor(state: AgentState) -> dict[str, Any]:
             ],
         }
 
-    approver = "unknown"
+    # Resolve approver identity
     record = service.get_record(state.request_id) or state.approval_record
-    if record and record.approver:
-        approver = record.approver
+    approver = getattr(record, "approver", None) or "approved-operator"
+    approval_id = getattr(record, "approval_id", None) or "unknown-approval-id"
+
+    if not state.remediation_plan or not state.remediation_plan.actions:
+        log.info("No remediation actions in plan", status="no_actions")
+        return {
+            "status": InvestigationStatus.REMEDIATING,
+            "current_step": state.current_step + 1,
+        }
+
+    executor = RemediationExecutor(timeout=settings.tool_timeout_seconds)
+    results = executor.execute_plan(
+        actions=state.remediation_plan.actions,
+        request_id=state.request_id,
+        approval_id=approval_id,
+        approver=approver,
+    )
+
+    # Use the first result as the primary remediation_result for state
+    primary_result = results[0] if results else None
+    all_success = all(r.success for r in results)
+    any_success = any(r.success for r in results)
 
     log.info(
-        f"Remediation executor: APPROVED by '{approver}' "
-        f"(Phase 9 will run real actions)",
-        status="stub",
+        f"Remediation execution complete: "
+        f"{len(results)} actions, all_success={all_success}",
+        status="completed",
     )
     return {
+        "remediation_result": primary_result,
         "status": InvestigationStatus.REMEDIATING,
         "current_step": state.current_step + 1,
     }
