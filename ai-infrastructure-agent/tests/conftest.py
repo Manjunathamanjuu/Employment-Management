@@ -9,9 +9,17 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(autouse=True)
 def clear_env_secrets(monkeypatch):
-    """Ensure no real secrets leak between tests."""
+    """Ensure no real secrets leak between tests and settings are reset."""
     # Remove any real key that might be in the shell environment
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    yield
+    # Reset settings singleton after each test to prevent state contamination
+    import app.config as cfg_module
+    cfg_module.settings = cfg_module.Settings()
+    import app.api.routes as routes_module
+    routes_module.settings = cfg_module.settings
+    import app.main as main_module
+    main_module.settings = cfg_module.settings
 
 
 @pytest.fixture
