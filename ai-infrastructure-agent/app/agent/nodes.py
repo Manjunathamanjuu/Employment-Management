@@ -304,100 +304,49 @@ def _mock_tool_result(tool_name: str, params: dict) -> ToolResult:
 
 
 def evidence_analyzer(state: AgentState) -> dict[str, Any]:
-    """Extract structured evidence from tool results.
+    """Extract and correlate structured evidence from tool results.
 
-    Separates confirmed observations from inferences.
-    Phase 2: rule-based extraction.
-    Phase 5+: LLM-assisted correlation.
+    Uses EvidenceCollector to:
+    - Apply 11 incident-type pattern extractors
+    - Generate cross-signal inferences (clearly flagged)
+    - Detect conflicting signals
+    - Identify missing evidence
+    - Calculate overall confidence
     """
+    from app.analysis.evidence import EvidenceCollector
+
     log = _make_logger(state, "evidence_analyzer")
     log.info("Analyzing evidence", status="started")
 
-    evidence: list[EvidenceItem] = list(state.evidence)
-    issues: list[str] = list(state.issues)
+    collector = EvidenceCollector()
+    correlation = collector.collect(state.tool_results)
 
-    for result in state.tool_results:
-        if not result.stdout:
-            continue
+    # Merge with any existing evidence (e.g. from previous phases)
+    existing_evidence = list(state.evidence)
+    merged_evidence = existing_evidence + correlation.evidence
 
-        stdout = result.stdout
+    existing_issues = list(state.issues)
+    merged_issues = list(dict.fromkeys(existing_issues + correlation.issues))
 
-        # CrashLoopBackOff — confirmed observation
-        if "CrashLoopBackOff" in stdout:
-            evidence.append(
-                EvidenceItem(
-                    source=result.tool_name,
-                    resource="pod/employment-management-6d8f9b7c4-xkp2n",
-                    observation="Pod is in CrashLoopBackOff state",
-                    confidence=ConfidenceLevel.HIGH,
-                    raw_reference=stdout[:200],
-                    is_inference=False,
-                )
-            )
-            if "Pod in CrashLoopBackOff" not in issues:
-                issues.append("Pod in CrashLoopBackOff")
-
-        # Connection refused — confirmed log observation
-        if "Connection refused" in stdout:
-            evidence.append(
-                EvidenceItem(
-                    source=result.tool_name,
-                    resource="pod/employment-management-6d8f9b7c4-xkp2n",
-                    observation="Application log: Connection refused on startup",
-                    confidence=ConfidenceLevel.HIGH,
-                    raw_reference=stdout[:200],
-                    is_inference=False,
-                )
-            )
-            # Inference: likely cannot reach a dependency
-            evidence.append(
-                EvidenceItem(
-                    source="evidence_analyzer",
-                    resource="pod/employment-management-6d8f9b7c4-xkp2n",
-                    observation=(
-                        "Application may be unable to reach a required dependency "
-                        "(database or external service)"
-                    ),
-                    confidence=ConfidenceLevel.MEDIUM,
-                    is_inference=True,
-                )
-            )
-            if "Application startup failure" not in issues:
-                issues.append("Application startup failure")
-
-        # Exit code 1
-        if "Exit Code: 1" in stdout or "Exiting with code 1" in stdout:
-            evidence.append(
-                EvidenceItem(
-                    source=result.tool_name,
-                    resource="pod/employment-management-6d8f9b7c4-xkp2n",
-                    observation="Container exiting with code 1 (application error)",
-                    confidence=ConfidenceLevel.HIGH,
-                    raw_reference=stdout[:200],
-                    is_inference=False,
-                )
-            )
-
-        # BackOff event
-        if "BackOff" in stdout and result.tool_name == "get_events":
-            evidence.append(
-                EvidenceItem(
-                    source=result.tool_name,
-                    resource="pod/employment-management-6d8f9b7c4-xkp2n",
-                    observation="Kubernetes event: Back-off restarting failed container",
-                    confidence=ConfidenceLevel.HIGH,
-                    raw_reference=stdout[:200],
-                    is_inference=False,
-                )
-            )
+    if correlation.conflicting_signals:
+        log.warning(
+            f"Conflicting signals detected: {correlation.conflicting_signals}",
+            status="conflicts",
+        )
+    if correlation.missing_evidence:
+        log.info(
+            f"Missing evidence identified: {correlation.missing_evidence}",
+            status="missing_evidence",
+        )
 
     log.info(
-        f"Evidence analysis complete: {len(evidence)} items, {len(issues)} issues",
+        f"Evidence analysis complete: {len(merged_evidence)} items, "
+        f"{len(merged_issues)} issues, confidence={correlation.overall_confidence.value}",
         status="completed",
     )
     return {
-        "evidence": evidence,
-        "issues": issues,
+        "evidence": merged_evidence,
+        "issues": merged_issues,
         "current_step": state.current_step + 1,
     }
 
@@ -418,8 +367,9 @@ def root_cause_analyzer(state: AgentState) -> dict[str, Any]:
     log = _make_logger(state, "root_cause_analyzer")
     log.info("Running root cause analysis", status="started")
 
+    from app.analysis.evidence import EvidenceCollector
+
     confirmed = [e for e in state.evidence if not e.is_inference]
-    inferred = [e for e in state.evidence if e.is_inference]
 
     if not confirmed:
         rca = RootCauseAnalysis(
