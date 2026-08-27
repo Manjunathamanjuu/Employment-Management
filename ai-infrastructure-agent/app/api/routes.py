@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 
 from app.api.models import (
     ApprovalRequest,
-    ErrorResponse,
     HealthResponse,
     ReadyResponse,
     TroubleshootRequest,
@@ -97,12 +95,28 @@ async def troubleshoot(
         },
     )
 
+    # Prompt injection and privilege escalation check
+    from app.security import detect_prompt_injection, detect_privilege_escalation, sanitise_llm_input
+    is_injection, _ = detect_prompt_injection(body.request)
+    if is_injection or detect_privilege_escalation(body.request):
+        logger.warning(
+            "Prompt injection or privilege escalation attempt blocked",
+            extra={"request_id": request_id, "agent_node": "api", "status": "blocked"},
+        )
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Request contains disallowed patterns", "code": "BLOCKED_INPUT"},
+        )
+
+    safe_request = sanitise_llm_input(body.request)
+
     try:
         from app.agent.graph import run_investigation
         from app.api.models import EvidenceItemResponse, RemediationActionResponse, RootCauseResponse
 
         final_state = run_investigation(
-            user_request=body.request,
+            user_request=safe_request,
             request_id=request_id,
         )
 
@@ -195,7 +209,6 @@ async def approve(body: ApprovalRequest, request: Request) -> dict:
     """
     from app.approval.service import ApprovalError, get_approval_service
 
-    req_id = str(uuid.uuid4())
     log_extra = {
         "request_id": body.request_id,
         "agent_node": "api.approve",

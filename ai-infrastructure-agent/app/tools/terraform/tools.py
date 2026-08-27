@@ -10,8 +10,6 @@ shell=False is enforced throughout.
 from __future__ import annotations
 
 import os
-import re
-from typing import Optional
 
 from app.agent.state import ToolResult
 from app.tools.base import BaseTool, _DANGEROUS_CHARS

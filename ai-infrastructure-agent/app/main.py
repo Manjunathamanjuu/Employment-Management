@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
@@ -15,6 +14,7 @@ from app.api.models import ErrorResponse
 from app.api.routes import router
 from app.config import settings
 from app.logging.logger import configure_logging, get_logger
+from app.security import SecurityMiddleware
 
 configure_logging(settings.log_level.value)
 logger = get_logger("ai_agent.main")
@@ -31,7 +31,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         },
     )
     # Log config (secrets redacted)
-    safe_config = settings.redacted_dict()
     logger.info(
         "Configuration loaded",
         extra={"agent_node": "startup", "status": "configured"},
@@ -57,6 +56,7 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.debug else None,
 )
 
+app.add_middleware(SecurityMiddleware)
 app.include_router(router)
 
 

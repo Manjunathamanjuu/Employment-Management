@@ -13,7 +13,6 @@ import sys
 import re
 from typing import Any, Optional
 import json
-import time
 
 # Patterns that indicate potentially sensitive content
 _SECRET_PATTERNS = [

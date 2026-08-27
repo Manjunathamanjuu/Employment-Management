@@ -30,7 +30,7 @@ from app.agent.nodes import (
     tool_executor,
     verification,
 )
-from app.agent.state import AgentState, ApprovalStatus, InvestigationStatus
+from app.agent.state import AgentState, InvestigationStatus
 from app.logging.logger import get_logger
 
 logger = get_logger("ai_agent.graph")

@@ -16,9 +16,8 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from app.agent.state import RemediationAction, RemediationResult, RiskLevel
 from app.analysis.remediation import is_dangerous_action
@@ -425,7 +424,6 @@ class RemediationExecutor:
 
     def _run_kubectl_allowlist(self, tool_name: str, params: dict) -> dict:
         """Execute an allowlisted kubectl write operation."""
-        spec = KUBECTL_ALLOWLIST[tool_name]
         namespace = self._validate_namespace(params.get("namespace", "employment-management"))
 
         if tool_name == "kubectl_delete_pod":
@@ -625,7 +623,7 @@ class RemediationExecutor:
         import json
         if self._DANGEROUS_CHARS.search(patch):
             raise ExecutionError(
-                f"Patch contains injection characters"
+                "Patch contains injection characters"
             )
         try:
             json.loads(patch)

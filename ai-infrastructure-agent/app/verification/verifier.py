@@ -14,16 +14,12 @@ from __future__ import annotations
 
 import re
 import subprocess
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
 from app.agent.state import (
-    ConfidenceLevel,
     RemediationResult,
-    RiskLevel,
-    ToolResult,
     VerificationResult,
 )
 from app.logging.logger import get_logger
@@ -214,7 +210,6 @@ class Verifier:
             )
 
         # --- Compare states ---
-        before_healthy = self._is_healthy(before_snapshot)
         after_healthy = self._is_healthy(after_snapshot)
         after_state_str = self._summarise_snapshot(after_snapshot)
         before_state_str = self._summarise_snapshot(before_snapshot)

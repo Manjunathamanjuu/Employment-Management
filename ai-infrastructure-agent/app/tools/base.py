@@ -217,7 +217,7 @@ class BaseTool(ABC):
                 error=f"Command timed out after {self.timeout} seconds",
             )
 
-        except FileNotFoundError as exc:
+        except FileNotFoundError:
             duration = time.monotonic() - start
             self.logger.error(
                 f"Tool {self.tool_name} executable not found: {cmd[0]}",

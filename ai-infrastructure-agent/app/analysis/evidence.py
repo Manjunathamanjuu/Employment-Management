@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
 
 from app.agent.state import ConfidenceLevel, EvidenceItem, ToolResult
 

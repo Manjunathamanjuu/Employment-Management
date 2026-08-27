@@ -9,8 +9,6 @@ Phase 3+: real tool calls wired in.
 
 from __future__ import annotations
 
-import json
-import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,17 +16,11 @@ from app.agent.state import (
     AgentState,
     ApprovalStatus,
     ConfidenceLevel,
-    EvidenceItem,
     FinalReport,
     InvestigationPlan,
     InvestigationStatus,
     InvestigationStep,
-    RemediationAction,
-    RemediationPlan,
-    RiskLevel,
-    RootCauseAnalysis,
     ToolResult,
-    VerificationResult,
 )
 from app.config import settings
 from app.logging.logger import AgentLogger
@@ -160,7 +152,7 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
     from app.tools.gcp import GCP_TOOLS, get_gcp_tool
     from app.tools.terraform import TERRAFORM_TOOLS, get_terraform_tool
 
-    ALL_TOOLS = {**KUBERNETES_TOOLS, **DOCKER_TOOLS, **GCP_TOOLS, **TERRAFORM_TOOLS}
+    # Tool registries accessed via individual getters
 
     log = _make_logger(state, "tool_executor")
 
@@ -622,7 +614,6 @@ def remediation_executor(state: AgentState) -> dict[str, Any]:
     # Use the first result as the primary remediation_result for state
     primary_result = results[0] if results else None
     all_success = all(r.success for r in results)
-    any_success = any(r.success for r in results)
 
     log.info(
         f"Remediation execution complete: "
@@ -650,7 +641,7 @@ def verification(state: AgentState) -> dict[str, Any]:
     - Return VERIFIED / NOT_VERIFIED / PARTIALLY_VERIFIED /
       REMEDIATION_EXECUTED_BUT_NOT_VERIFIED
     """
-    from app.verification.verifier import Verifier, VerificationStatus
+    from app.verification.verifier import Verifier
 
     log = _make_logger(state, "verification")
     log.info("Starting post-remediation verification", status="started")
@@ -707,9 +698,6 @@ def final_report(state: AgentState) -> dict[str, Any]:
     log = _make_logger(state, "final_report")
     log.info("Generating final report", status="started")
 
-    remediation_actions = (
-        state.remediation_plan.actions if state.remediation_plan else []
-    )
 
     # Preserve FAILED status; anything else becomes COMPLETED
     overall = (
