@@ -356,133 +356,90 @@ def evidence_analyzer(state: AgentState) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def root_cause_analyzer(state: AgentState) -> dict[str, Any]:
-    """Determine probable root cause from collected evidence.
+def _infer_incident_types_from_evidence(evidence: list) -> list[str]:
+    """Infer incident types from evidence observation text.
 
-    Assigns confidence only when evidence supports it.
-    Never hallucinates — explicitly flags insufficient evidence.
-    Phase 2: rule-based analysis.
-    Phase 6+: LLM-assisted with evidence grounding.
+    Used when tool_results is empty but evidence items exist (e.g. in unit tests
+    that pre-populate state.evidence directly).
     """
+    import re
+    types = set()
+    patterns = [
+        (re.compile(r"CrashLoopBackOff", re.I), "CrashLoopBackOff"),
+        (re.compile(r"ImagePullBackOff|ErrImagePull", re.I), "ImagePullBackOff"),
+        (re.compile(r"Readiness probe", re.I), "ReadinessFailure"),
+        (re.compile(r"Liveness probe", re.I), "LivenessFailure"),
+        (re.compile(r"no.{0,20}endpoint|Endpoints.*none", re.I), "ServiceNoEndpoints"),
+        (re.compile(r"Gateway.*not|Programmed.*False", re.I), "GatewayFailure"),
+        (re.compile(r"HTTPRoute|Accepted.*False", re.I), "HTTPRouteFailure"),
+        (re.compile(r"unavailable.{0,20}replica|MinimumReplicas", re.I), "DeploymentUnavailable"),
+        (re.compile(r"OCI runtime|Docker|containerd", re.I), "DockerIssue"),
+        (re.compile(r"terraform|Terraform", re.I), "TerraformIssue"),
+        (re.compile(r"Connection refused|ECONNREFUSED", re.I), "ConnectionRefused"),
+        (re.compile(r"exit.{0,20}code.{0,10}[1-9]", re.I), "CrashLoopBackOff"),
+    ]
+    for ev in evidence:
+        if ev.is_inference:
+            continue
+        for pattern, incident_type in patterns:
+            if pattern.search(ev.observation):
+                types.add(incident_type)
+    return list(types)
+
+
+def root_cause_analyzer(state: AgentState) -> dict[str, Any]:
+    """Determine probable root cause from correlated evidence.
+
+    Uses RootCauseEngine which:
+    - Maps incident types to structured templates (no hallucination)
+    - Requires confirmed evidence for any non-INSUFFICIENT confidence
+    - Downgrades confidence on conflicting signals
+    - Returns INSUFFICIENT explicitly when evidence is absent
+    """
+    from app.analysis.evidence import EvidenceCollector
+    from app.analysis.root_cause import RootCauseEngine
+
     log = _make_logger(state, "root_cause_analyzer")
     log.info("Running root cause analysis", status="started")
 
-    from app.analysis.evidence import EvidenceCollector
+    # Re-run correlation to get full CorrelationResult with incident_types,
+    # conflicts, and missing_evidence
+    collector = EvidenceCollector()
+    correlation = collector.collect(state.tool_results)
 
-    confirmed = [e for e in state.evidence if not e.is_inference]
+    # Supplement with pre-existing evidence items already in state
+    if state.evidence:
+        existing_confirmed = [e for e in state.evidence if not e.is_inference]
+        corr_confirmed = [e for e in correlation.evidence if not e.is_inference]
+        seen = {e.observation for e in corr_confirmed}
+        for e in existing_confirmed:
+            if e.observation not in seen:
+                correlation.evidence.append(e)
+                seen.add(e.observation)
 
-    if not confirmed:
-        rca = RootCauseAnalysis(
-            incident_status="UNKNOWN",
-            affected_resource="unknown",
-            root_cause="Insufficient evidence to determine root cause",
-            confidence=ConfidenceLevel.INSUFFICIENT,
-            reasoning_summary=(
-                "No confirmed evidence was collected. "
-                "Cannot determine root cause without observable facts."
-            ),
-            recommended_next_investigation=[
-                "Verify kubectl access to the cluster",
-                "Check pod status manually",
-            ],
-            risk=RiskLevel.LOW,
+    # When tool_results were empty (e.g. tests that pre-populate state.evidence),
+    # infer incident types from existing evidence observations so the engine
+    # can select the right template
+    if not correlation.incident_types and correlation.evidence:
+        correlation.incident_types = _infer_incident_types_from_evidence(
+            correlation.evidence
         )
-        log.warning("Insufficient evidence for root cause", status="completed")
-        return {
-            "root_cause": rca,
-            "confidence": ConfidenceLevel.INSUFFICIENT,
-            "status": InvestigationStatus.ANALYZED,
-            "current_step": state.current_step + 1,
-        }
 
-    # Determine confidence based on evidence count and consistency
-    crash_loop = any("CrashLoopBackOff" in e.observation for e in confirmed)
-    conn_refused = any("Connection refused" in e.observation for e in confirmed)
-    exit_code_1 = any("exit" in e.observation.lower() and "1" in e.observation for e in confirmed)
-
-    evidence_refs = [e.observation for e in confirmed[:5]]
-
-    if crash_loop and conn_refused and exit_code_1:
-        confidence = ConfidenceLevel.HIGH
-        root_cause = (
-            "Application is failing to start due to an inability to connect to a "
-            "required dependency (likely the database or a backend service). "
-            "This causes the container to exit with code 1, triggering CrashLoopBackOff."
-        )
-        reasoning = (
-            "Three corroborating signals: "
-            "(1) Pod status shows CrashLoopBackOff, "
-            "(2) application logs show 'Connection refused' at startup, "
-            "(3) container exit code is 1. "
-            "All evidence is consistent with a dependency connectivity failure."
-        )
-        alternative_causes = [
-            "Missing environment variable or misconfigured connection string",
-            "Target service is down or not reachable from this namespace",
-            "Network policy blocking egress to the dependency",
-        ]
-        next_steps = [
-            "Verify database/service endpoint is reachable from the pod's network",
-            "Check environment variables for connection configuration",
-            "Inspect NetworkPolicy resources in the namespace",
-        ]
-        risk = RiskLevel.MEDIUM
-
-    elif crash_loop:
-        confidence = ConfidenceLevel.MEDIUM
-        root_cause = (
-            "Pod is in CrashLoopBackOff. The application is repeatedly crashing on startup. "
-            "The precise cause requires additional log analysis."
-        )
-        reasoning = (
-            "CrashLoopBackOff confirmed via pod status. "
-            "Log evidence is partial — full root cause requires deeper investigation."
-        )
-        alternative_causes = [
-            "Application configuration error",
-            "Missing dependency",
-            "OOM kill",
-        ]
-        next_steps = ["Collect full container logs", "Inspect resource limits"]
-        risk = RiskLevel.MEDIUM
-
-    else:
-        confidence = ConfidenceLevel.LOW
-        root_cause = "Evidence collected but root cause is unclear. Further investigation required."
-        reasoning = "Collected evidence does not point to a single clear root cause."
-        alternative_causes = []
-        next_steps = ["Collect more diagnostic data"]
-        risk = RiskLevel.LOW
-
-    rca = RootCauseAnalysis(
-        incident_status="ACTIVE",
-        affected_resource="pod/employment-management-6d8f9b7c4-xkp2n",
-        root_cause=root_cause,
-        confidence=confidence,
-        evidence_references=evidence_refs,
-        reasoning_summary=reasoning,
-        alternative_causes=alternative_causes,
-        recommended_next_investigation=next_steps,
-        risk=risk,
-    )
+    engine = RootCauseEngine()
+    rca = engine.analyze(correlation, user_request=state.user_request)
 
     log.info(
-        f"Root cause identified with {confidence.value} confidence",
+        f"Root cause analysis complete: confidence={rca.confidence.value}, "
+        f"incident_status={rca.incident_status}",
         status="completed",
     )
     return {
         "root_cause": rca,
-        "confidence": confidence,
-        "risk": risk,
+        "confidence": rca.confidence,
+        "risk": rca.risk,
         "status": InvestigationStatus.ANALYZED,
         "current_step": state.current_step + 1,
     }
-
-
-# ---------------------------------------------------------------------------
-# Node: remediation_planner
-# ---------------------------------------------------------------------------
-
 
 def remediation_planner(state: AgentState) -> dict[str, Any]:
     """Generate remediation recommendations — does NOT execute anything.
