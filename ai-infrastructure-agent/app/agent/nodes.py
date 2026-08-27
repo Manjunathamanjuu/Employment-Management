@@ -644,19 +644,51 @@ def remediation_executor(state: AgentState) -> dict[str, Any]:
 def verification(state: AgentState) -> dict[str, Any]:
     """Verify infrastructure state after remediation.
 
-    Phase 2: stub — returns a mock verification result.
-    Phase 10+: real infrastructure state inspection.
+    Uses Verifier to:
+    - Collect actual live infrastructure state (never trusts exit codes)
+    - Compare before state (from original tool_results) with after state
+    - Return VERIFIED / NOT_VERIFIED / PARTIALLY_VERIFIED /
+      REMEDIATION_EXECUTED_BUT_NOT_VERIFIED
     """
-    log = _make_logger(state, "verification")
-    log.info("Verification (Phase 2 stub)", status="stub")
+    from app.verification.verifier import Verifier, VerificationStatus
 
-    result = VerificationResult(
-        verified=False,
-        status="NOT_VERIFIED",
-        details=(
-            "Verification not yet implemented (Phase 10). "
-            "Remediation was not executed in Phase 2."
-        ),
+    log = _make_logger(state, "verification")
+    log.info("Starting post-remediation verification", status="started")
+
+    verifier = Verifier(
+        timeout=settings.tool_timeout_seconds,
+        namespace=settings.kubernetes_namespace,
+    )
+
+    # Build before snapshot from original tool_results collected during investigation
+    before_snapshot = None
+    if state.tool_results:
+        from app.verification.verifier import VerificationSnapshot, _extract_pod_health, _extract_deployment_health
+        from datetime import datetime, timezone
+        before_snapshot = VerificationSnapshot(
+            timestamp=datetime.now(timezone.utc),
+        )
+        for tr in state.tool_results:
+            if tr.tool_name == "get_pods" and tr.stdout:
+                before_snapshot.pod_health = _extract_pod_health(tr.stdout)
+            elif tr.tool_name == "get_deployment" and tr.stdout:
+                before_snapshot.deployment_health = _extract_deployment_health(tr.stdout)
+
+    # Collect remediation results for context
+    remediation_results = []
+    if state.remediation_result:
+        remediation_results = [state.remediation_result]
+
+    # Run verification
+    result = verifier.verify(
+        before_snapshot=before_snapshot,
+        remediation_results=remediation_results,
+        request_id=state.request_id,
+    )
+
+    log.info(
+        f"Verification complete: status={result.status}, verified={result.verified}",
+        status="completed",
     )
     return {
         "verification_result": result,
