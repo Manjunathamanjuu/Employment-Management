@@ -156,6 +156,11 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
     - Unrecognised tools: fall back to mock (Phase 2 compatibility)
     """
     from app.tools.kubernetes import KUBERNETES_TOOLS, get_kubernetes_tool
+    from app.tools.docker import DOCKER_TOOLS, get_docker_tool
+    from app.tools.gcp import GCP_TOOLS, get_gcp_tool
+    from app.tools.terraform import TERRAFORM_TOOLS, get_terraform_tool
+
+    ALL_TOOLS = {**KUBERNETES_TOOLS, **DOCKER_TOOLS, **GCP_TOOLS, **TERRAFORM_TOOLS}
 
     log = _make_logger(state, "tool_executor")
 
@@ -178,21 +183,30 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
             execution_time=0.0,
         )
 
-        if tool_name in KUBERNETES_TOOLS:
-            try:
+        try:
+            if tool_name in KUBERNETES_TOOLS:
                 tool = get_kubernetes_tool(tool_name, timeout=settings.tool_timeout_seconds)
                 result = tool.execute(**step.parameters)
-            except (ValueError, TypeError) as exc:
-                result = ToolResult(
-                    tool_name=tool_name,
-                    status="validation_error",
-                    command_type="read",
-                    error=str(exc),
-                    namespace=step.parameters.get("namespace"),
-                )
-        else:
-            # Phase 2 mock fallback for tools not yet implemented
-            result = _mock_tool_result(tool_name, step.parameters)
+            elif tool_name in DOCKER_TOOLS:
+                tool = get_docker_tool(tool_name, timeout=settings.tool_timeout_seconds)
+                result = tool.execute(**step.parameters)
+            elif tool_name in GCP_TOOLS:
+                tool = get_gcp_tool(tool_name, timeout=settings.tool_timeout_seconds)
+                result = tool.execute(**step.parameters)
+            elif tool_name in TERRAFORM_TOOLS:
+                tool = get_terraform_tool(tool_name, timeout=settings.tool_timeout_seconds)
+                result = tool.execute(**step.parameters)
+            else:
+                # Phase 2 mock fallback for tools not yet implemented
+                result = _mock_tool_result(tool_name, step.parameters)
+        except (ValueError, TypeError) as exc:
+            result = ToolResult(
+                tool_name=tool_name,
+                status="validation_error",
+                command_type="read",
+                error=str(exc),
+                namespace=step.parameters.get("namespace"),
+            )
 
         step.status = "COMPLETED"
         step.result = result
