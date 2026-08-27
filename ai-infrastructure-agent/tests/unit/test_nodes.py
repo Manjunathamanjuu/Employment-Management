@@ -118,12 +118,13 @@ class TestInvestigationPlanner:
 
 class TestToolExecutor:
     def _state_with_plan(self) -> AgentState:
+        """Plan using only namespace-only tools (no resource-name required)."""
         plan = InvestigationPlan(
             summary="Test plan",
             steps=[
                 InvestigationStep(description="List pods", tool="get_pods",
                                   parameters={"namespace": "employment-management"}),
-                InvestigationStep(description="Get logs", tool="get_pod_logs",
+                InvestigationStep(description="Get events", tool="get_events",
                                   parameters={"namespace": "employment-management"}),
             ],
         )
@@ -135,14 +136,28 @@ class TestToolExecutor:
 
     def test_executes_all_pending_steps(self):
         from app.agent.nodes import tool_executor
-        state = self._state_with_plan()
-        result = tool_executor(state)
+        from unittest.mock import patch, MagicMock
+        import subprocess as sp
+        mock_proc = MagicMock(spec=sp.CompletedProcess)
+        mock_proc.stdout = "NAME  READY  STATUS\npod/x  1/1  Running"
+        mock_proc.stderr = ""
+        mock_proc.returncode = 0
+        with patch("subprocess.run", return_value=mock_proc):
+            state = self._state_with_plan()
+            result = tool_executor(state)
         assert len(result["tool_results"]) == 2
 
     def test_all_steps_marked_completed(self):
         from app.agent.nodes import tool_executor
-        state = self._state_with_plan()
-        result = tool_executor(state)
+        from unittest.mock import patch, MagicMock
+        import subprocess as sp
+        mock_proc = MagicMock(spec=sp.CompletedProcess)
+        mock_proc.stdout = ""
+        mock_proc.stderr = ""
+        mock_proc.returncode = 0
+        with patch("subprocess.run", return_value=mock_proc):
+            state = self._state_with_plan()
+            result = tool_executor(state)
         plan = result["investigation_plan"]
         assert all(s.status == "COMPLETED" for s in plan.steps)
 
@@ -154,15 +169,32 @@ class TestToolExecutor:
 
     def test_tool_results_have_required_fields(self):
         from app.agent.nodes import tool_executor
-        state = self._state_with_plan()
-        result = tool_executor(state)
+        from unittest.mock import patch, MagicMock
+        import subprocess as sp
+        mock_proc = MagicMock(spec=sp.CompletedProcess)
+        mock_proc.stdout = "NAME  STATUS\npod  Running"
+        mock_proc.stderr = ""
+        mock_proc.returncode = 0
+        with patch("subprocess.run", return_value=mock_proc):
+            state = self._state_with_plan()
+            result = tool_executor(state)
         for tr in result["tool_results"]:
             assert tr.tool_name
             assert tr.status
             assert tr.command_type
 
-    def test_mock_get_pods_contains_crashloop(self):
+    def test_get_pods_returns_kubectl_output(self):
         from app.agent.nodes import tool_executor
+        from unittest.mock import patch, MagicMock
+        import subprocess as sp
+        crashloop_stdout = (
+            "NAME  READY  STATUS  RESTARTS\n"
+            "employment-management-abc  0/1  CrashLoopBackOff  5"
+        )
+        mock_proc = MagicMock(spec=sp.CompletedProcess)
+        mock_proc.stdout = crashloop_stdout
+        mock_proc.stderr = ""
+        mock_proc.returncode = 0
         plan = InvestigationPlan(
             summary="Test",
             steps=[InvestigationStep(
@@ -172,8 +204,40 @@ class TestToolExecutor:
             )],
         )
         state = _make_state(user_request="test", investigation_plan=plan)
-        result = tool_executor(state)
+        with patch("subprocess.run", return_value=mock_proc):
+            result = tool_executor(state)
         assert "CrashLoopBackOff" in result["tool_results"][0].stdout
+
+    def test_unknown_tool_uses_mock_fallback(self):
+        from app.agent.nodes import tool_executor
+        plan = InvestigationPlan(
+            summary="Test",
+            steps=[InvestigationStep(
+                description="Unknown tool",
+                tool="some_future_tool",
+                parameters={"namespace": "employment-management"},
+            )],
+        )
+        state = _make_state(user_request="test", investigation_plan=plan)
+        result = tool_executor(state)
+        assert len(result["tool_results"]) == 1
+
+    def test_validation_error_recorded_not_raised(self):
+        """Tool parameter validation errors are captured, not raised."""
+        from app.agent.nodes import tool_executor
+        plan = InvestigationPlan(
+            summary="Test",
+            steps=[InvestigationStep(
+                description="Describe pod with injection",
+                tool="describe_pod",
+                parameters={"pod_name": "pod; rm -rf /",
+                            "namespace": "employment-management"},
+            )],
+        )
+        state = _make_state(user_request="test", investigation_plan=plan)
+        result = tool_executor(state)
+        tr = result["tool_results"][0]
+        assert tr.status == "validation_error"
 
 
 # ---------------------------------------------------------------------------

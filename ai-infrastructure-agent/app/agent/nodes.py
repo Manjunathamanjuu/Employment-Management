@@ -94,7 +94,9 @@ def investigation_planner(state: AgentState) -> dict[str, Any]:
     log = _make_logger(state, "investigation_planner")
     log.info("Planning investigation", status="started")
 
-    # Phase 2 mock plan — deterministic, no LLM call
+    # Phase 2 mock plan — deterministic, no LLM call.
+    # Note: tools requiring a specific resource name (describe_pod, get_pod_logs)
+    # are added dynamically in Phase 5+ once pod names are discovered.
     steps = [
         InvestigationStep(
             description="List pods in namespace",
@@ -102,18 +104,18 @@ def investigation_planner(state: AgentState) -> dict[str, Any]:
             parameters={"namespace": settings.kubernetes_namespace},
         ),
         InvestigationStep(
-            description="Describe failing pod",
-            tool="describe_pod",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-        InvestigationStep(
-            description="Retrieve pod logs",
-            tool="get_pod_logs",
-            parameters={"namespace": settings.kubernetes_namespace},
-        ),
-        InvestigationStep(
             description="Check recent Kubernetes events",
             tool="get_events",
+            parameters={"namespace": settings.kubernetes_namespace},
+        ),
+        InvestigationStep(
+            description="List deployments in namespace",
+            tool="get_deployment",
+            parameters={"namespace": settings.kubernetes_namespace},
+        ),
+        InvestigationStep(
+            description="List services in namespace",
+            tool="get_service",
             parameters={"namespace": settings.kubernetes_namespace},
         ),
     ]
@@ -121,10 +123,11 @@ def investigation_planner(state: AgentState) -> dict[str, Any]:
     plan = InvestigationPlan(
         summary=(
             f"Investigate infrastructure issue: '{state.user_request[:100]}'. "
-            "Collect pod status, logs, and events from the employment-management namespace."
+            "Collect pod status, events, deployments, and services "
+            "from the employment-management namespace."
         ),
         steps=steps,
-        estimated_tools=["get_pods", "describe_pod", "get_pod_logs", "get_events"],
+        estimated_tools=["get_pods", "get_events", "get_deployment", "get_service"],
     )
 
     log.info(
@@ -143,11 +146,17 @@ def investigation_planner(state: AgentState) -> dict[str, Any]:
 
 
 def tool_executor(state: AgentState) -> dict[str, Any]:
-    """Execute the next pending investigation step.
+    """Execute all pending investigation steps.
 
-    Phase 2: returns mocked infrastructure evidence.
-    Phase 3+: real kubectl / docker / gcloud calls.
+    Routes each step to the appropriate tool:
+    - Kubernetes tools: get_pods, describe_pod, get_pod_logs, get_events,
+      get_deployment, describe_deployment, get_replicasets, get_service,
+      describe_service, get_endpointslices, get_gateway, describe_gateway,
+      get_httproute, describe_httproute
+    - Unrecognised tools: fall back to mock (Phase 2 compatibility)
     """
+    from app.tools.kubernetes import KUBERNETES_TOOLS, get_kubernetes_tool
+
     log = _make_logger(state, "tool_executor")
 
     plan = state.investigation_plan
@@ -157,24 +166,42 @@ def tool_executor(state: AgentState) -> dict[str, Any]:
 
     tool_results: list[ToolResult] = list(state.tool_results)
 
-    # Execute all pending steps (Phase 2: mock all of them)
     for step in plan.steps:
-        if step.status == "PENDING":
-            log.info(
-                f"Executing step: {step.description}",
-                tool_name=step.tool or "unknown",
-                status="executing",
-                execution_time=0.0,
-            )
-            result = _mock_tool_result(step.tool or "unknown", step.parameters)
-            step.status = "COMPLETED"
-            step.result = result
-            tool_results.append(result)
-            log.tool_call(
-                tool_name=step.tool or "unknown",
-                status=result.status,
-                execution_time=result.duration or 0.0,
-            )
+        if step.status != "PENDING":
+            continue
+
+        tool_name = step.tool or "unknown"
+        log.info(
+            f"Executing step: {step.description}",
+            tool_name=tool_name,
+            status="executing",
+            execution_time=0.0,
+        )
+
+        if tool_name in KUBERNETES_TOOLS:
+            try:
+                tool = get_kubernetes_tool(tool_name, timeout=settings.tool_timeout_seconds)
+                result = tool.execute(**step.parameters)
+            except (ValueError, TypeError) as exc:
+                result = ToolResult(
+                    tool_name=tool_name,
+                    status="validation_error",
+                    command_type="read",
+                    error=str(exc),
+                    namespace=step.parameters.get("namespace"),
+                )
+        else:
+            # Phase 2 mock fallback for tools not yet implemented
+            result = _mock_tool_result(tool_name, step.parameters)
+
+        step.status = "COMPLETED"
+        step.result = result
+        tool_results.append(result)
+        log.tool_call(
+            tool_name=tool_name,
+            status=result.status,
+            execution_time=result.duration or 0.0,
+        )
 
     return {
         "tool_results": tool_results,

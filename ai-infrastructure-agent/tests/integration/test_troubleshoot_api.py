@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+import subprocess as sp
+
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
+_CRASHLOOP = (
+    "NAME                                    READY   STATUS             RESTARTS\n"
+    "employment-management-6d8f9b7c4-xkp2n   0/1     CrashLoopBackOff   5"
+)
+
+
+def _mock_proc(stdout: str = _CRASHLOOP, returncode: int = 0):
+    m = MagicMock(spec=sp.CompletedProcess)
+    m.stdout = stdout
+    m.stderr = ""
+    m.returncode = returncode
+    return m
 
 
 @pytest.fixture
@@ -19,7 +35,14 @@ def client(monkeypatch):
     routes_module.settings = new_settings
     main_module.settings = new_settings
     from app.main import app
-    return TestClient(app, raise_server_exceptions=False)
+    yield TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture(autouse=True)
+def mock_kubectl():
+    """Mock subprocess.run globally for all integration tests in this module."""
+    with patch("subprocess.run", return_value=_mock_proc()):
+        yield
 
 
 class TestTroubleshootWorkflow:
