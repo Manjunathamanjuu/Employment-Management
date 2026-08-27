@@ -442,12 +442,18 @@ def root_cause_analyzer(state: AgentState) -> dict[str, Any]:
     }
 
 def remediation_planner(state: AgentState) -> dict[str, Any]:
-    """Generate remediation recommendations — does NOT execute anything.
+    """Generate remediation recommendations grounded in root cause analysis.
 
-    Every action requires explicit human approval before execution.
-    Phase 2: deterministic recommendations.
-    Phase 7+: LLM-generated with risk scoring.
+    Uses RemediationPlanner which:
+    - Selects an incident-specific playbook from the root cause
+    - Filters dangerous actions (safety net)
+    - Enforces approval_required=True on every action
+    - Returns advisory-only plan when confidence is LOW
+    - Returns no plan when confidence is INSUFFICIENT
+    - Every action includes a rollback plan
     """
+    from app.analysis.remediation import RemediationPlanner
+
     log = _make_logger(state, "remediation_planner")
     log.info("Planning remediation", status="started")
 
@@ -458,88 +464,33 @@ def remediation_planner(state: AgentState) -> dict[str, Any]:
             "current_step": state.current_step + 1,
         }
 
-    actions: list[RemediationAction] = []
-
-    rca = state.root_cause
-    conn_refused = any(
-        "Connection refused" in e.observation for e in state.evidence if not e.is_inference
-    )
-    crash_loop = any(
-        "CrashLoopBackOff" in e.observation for e in state.evidence if not e.is_inference
+    planner = RemediationPlanner()
+    plan = planner.plan(
+        root_cause=state.root_cause,
+        namespace=settings.kubernetes_namespace,
+        confidence=state.confidence,
     )
 
-    if conn_refused:
-        actions.append(
-            RemediationAction(
-                action=(
-                    "Verify and correct the database/service connection configuration. "
-                    "Check environment variables: DB_HOST, DB_PORT, DB_URL, or equivalent."
-                ),
-                reason=(
-                    "Application log shows 'Connection refused' at startup, "
-                    "indicating a misconfigured or unreachable dependency endpoint."
-                ),
-                expected_result=(
-                    "Application connects successfully to the dependency and starts normally."
-                ),
-                risk=RiskLevel.LOW,
-                rollback="Revert environment variable changes to previous values.",
-                approval_required=True,
-                tool="kubectl_set_env",
-                parameters={"namespace": settings.kubernetes_namespace},
-            )
-        )
-
-    if crash_loop:
-        actions.append(
-            RemediationAction(
-                action=(
-                    "After resolving the root cause, delete the failing pod to allow "
-                    "the ReplicaSet to create a fresh replacement."
-                ),
-                reason=(
-                    "CrashLoopBackOff prevents the pod from recovering automatically "
-                    "once the underlying issue is fixed."
-                ),
-                expected_result="New pod starts successfully without CrashLoopBackOff.",
-                risk=RiskLevel.MEDIUM,
-                rollback=(
-                    "If new pod also fails, roll back the Deployment to the "
-                    "previous known-good revision."
-                ),
-                approval_required=True,
-                tool="kubectl_delete_pod",
-                parameters={
-                    "namespace": settings.kubernetes_namespace,
-                    "pod": "employment-management-6d8f9b7c4-xkp2n",
-                },
-            )
-        )
-
-    overall_risk = (
-        RiskLevel.MEDIUM
-        if any(a.risk == RiskLevel.MEDIUM for a in actions)
-        else RiskLevel.LOW
-    )
-
-    plan = RemediationPlan(
-        actions=actions,
-        overall_risk=overall_risk,
-        requires_approval=True,
-    )
+    if plan is None:
+        log.warning("No remediation plan generated", status="no_plan")
+        return {
+            "status": InvestigationStatus.REMEDIATION_PLANNED,
+            "current_step": state.current_step + 1,
+        }
 
     log.info(
-        f"Remediation plan created: {len(actions)} actions, risk={overall_risk.value}",
+        f"Remediation plan: {len(plan.actions)} actions, risk={plan.overall_risk.value}",
         status="completed",
     )
     return {
         "remediation_plan": plan,
-        "risk": overall_risk,
+        "risk": plan.overall_risk,
         "status": InvestigationStatus.REMEDIATION_PLANNED,
         "approval_required": True,
         "approval_status": ApprovalStatus.PENDING,
         "current_step": state.current_step + 1,
     }
+
 
 
 # ---------------------------------------------------------------------------
