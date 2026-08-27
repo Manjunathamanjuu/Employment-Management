@@ -1,0 +1,73 @@
+# ============================================================
+# AI Infrastructure Troubleshooting Agent — .dockerignore
+# Exclude everything not needed in the production image
+# ============================================================
+
+# Secret files — NEVER include in image
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.crt
+*.p12
+kubeconfig
+*.kubeconfig
+gcp-credentials.json
+service-account.json
+
+# Tests — not needed in production image
+tests/
+test_*
+*_test.py
+
+# Development / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CI/CD configs
+.github/
+.gitlab-ci.yml
+
+# Terraform / Kubernetes (agent should never contain infra configs)
+*.tf
+*.tfvars
+*.tfstate
+*.yaml
+*.yml
+Kubernetes-manifests/
+
+# Logs
+*.log
+logs/
+
+# Virtual environments
+.venv/
+venv/
+env/
