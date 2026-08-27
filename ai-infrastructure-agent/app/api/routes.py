@@ -97,13 +97,85 @@ async def troubleshoot(
         },
     )
 
-    # Phase 1: return stub — full workflow wired in Phase 2
-    return TroubleshootResponse(
-        request_id=request_id,
-        status="PENDING",
-        approval_required=settings.require_human_approval,
-        approval_status="PENDING",
-    )
+    try:
+        from app.agent.graph import run_investigation
+        from app.api.models import EvidenceItemResponse, RemediationActionResponse, RootCauseResponse
+
+        final_state = run_investigation(
+            user_request=body.request,
+            request_id=request_id,
+        )
+
+        root_cause_resp = None
+        if final_state.root_cause:
+            rca = final_state.root_cause
+            root_cause_resp = RootCauseResponse(
+                incident_status=rca.incident_status,
+                affected_resource=rca.affected_resource,
+                root_cause=rca.root_cause,
+                confidence=rca.confidence.value,
+                reasoning_summary=rca.reasoning_summary,
+                alternative_causes=rca.alternative_causes,
+                recommended_next_investigation=rca.recommended_next_investigation,
+                risk=rca.risk.value,
+            )
+
+        evidence_resp = [
+            EvidenceItemResponse(
+                source=e.source,
+                resource=e.resource,
+                observation=e.observation,
+                confidence=e.confidence.value,
+                is_inference=e.is_inference,
+            )
+            for e in final_state.evidence
+        ]
+
+        remediation_resp = []
+        if final_state.remediation_plan:
+            remediation_resp = [
+                RemediationActionResponse(
+                    remediation_id=a.remediation_id,
+                    action=a.action,
+                    reason=a.reason,
+                    expected_result=a.expected_result,
+                    risk=a.risk.value,
+                    rollback=a.rollback,
+                    approval_required=a.approval_required,
+                )
+                for a in final_state.remediation_plan.actions
+            ]
+
+        return TroubleshootResponse(
+            request_id=final_state.request_id,
+            status=final_state.status.value,
+            root_cause=root_cause_resp,
+            confidence=final_state.confidence.value,
+            evidence=evidence_resp,
+            issues=final_state.issues,
+            remediation=remediation_resp,
+            approval_required=final_state.approval_required,
+            approval_status=final_state.approval_status.value,
+            errors=final_state.errors,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Investigation workflow failed",
+            extra={
+                "request_id": request_id,
+                "agent_node": "api",
+                "status": "error",
+                "error_type": type(exc).__name__,
+            },
+        )
+        return TroubleshootResponse(
+            request_id=request_id,
+            status="FAILED",
+            approval_required=settings.require_human_approval,
+            approval_status="PENDING",
+            errors=["Investigation workflow encountered an internal error."],
+        )
 
 
 @router.post(
