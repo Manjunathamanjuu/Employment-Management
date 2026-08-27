@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CloudOps — AI-Powered Infrastructure Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+          colors: {
+            brand: { 400:'#22d3ee', 500:'#06b6d4', 600:'#0891b2', 700:'#0e7490' }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;font-family:'Inter',sans-serif}
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:#0f172a}
+    ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px}
+    .light ::-webkit-scrollbar-track{background:#f1f5f9}
+    .light ::-webkit-scrollbar-thumb{background:#cbd5e1}
+    .spin{animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .fade-in{animation:fadeIn 0.25s ease-out}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .blink{animation:blinkAnim 1.4s ease-in-out infinite}
+    @keyframes blinkAnim{0%,100%{opacity:1}50%{opacity:0.35}}
+    .sidebar-link{transition:background 0.15s,color 0.15s,border-color 0.15s}
+    pre,code{font-family:'JetBrains Mono',monospace}
+    .stage-done{opacity:1}
+    .stage-active{opacity:1}
+    .stage-wait{opacity:0.35}
+    #root{height:100%}
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+<div id="root"></div>
+
+<script type="module">
+import { h, render, Fragment } from 'https://esm.sh/preact@10.23.2';
+import { useState, useEffect, useRef, useCallback } from 'https://esm.sh/preact@10.23.2/hooks';
+import { html } from 'https://esm.sh/htm@3.1.1/preact';
+
+// ─── API client — calls EXISTING backend endpoints only ──────────────────────
+const BASE = window.location.origin;
+const api = {
+  async health() {
+    const r = await fetch(`${BASE}/health`);
+    return r.json();
+  },
+  async ready() {
+    const r = await fetch(`${BASE}/ready`);
+    return { ok: r.ok, data: await r.json() };
+  },
+  async troubleshoot(request, namespace) {
+    const body = { request };
+    if (namespace) body.namespace = namespace;
+    const r = await fetch(`${BASE}/api/v1/troubleshoot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e?.detail?.error || e?.error || `HTTP ${r.status}`);
+    }
+    return r.json();
+  },
+  async approve(requestId, approved, approver, reason) {
+    const body = { request_id: requestId, approved, approver };
+    if (reason) body.reason = reason;
+    const r = await fetch(`${BASE}/api/v1/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e?.detail?.error || e?.error || `HTTP ${r.status}`);
+    }
+    return r.json();
+  }
+};
+
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+const PATHS = {
+  home:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10',
+  zap:    'M13 2 3 14h9l-1 8 10-12h-9l1-8z',
+  search: 'M11 11m-8 0a8 8 0 1016 0 8 8 0 00-16 0 M21 21l-4.35-4.35',
+  layers: 'M12 2 2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5',
+  alert:  'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z M12 9v4 M12 17h.01',
+  log:    'M21 10H7 M21 6H3 M21 14H3 M21 18H7',
+  gear:   'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+  cloud:  'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z',
+  shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  check:  'M20 6 9 17l-5-5',
+  xmark:  'M18 6 6 18 M6 6l12 12',
+  info:   'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01',
+  warn:   'M12 9v4 M12 17h.01 M10.29 3.86 1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z',
+  lock:   'M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2z M7 11V7a5 5 0 0110 0v4',
+  eye:    'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z',
+  sun:    'M12 7a5 5 0 100 10A5 5 0 0012 7z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42',
+  moon:   'M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z',
+  send:   'M22 2 11 13 M22 2l-7 20-4-9-9-4 20-7z',
+  plus:   'M12 5v14 M5 12h14',
+  refresh:'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15',
+  chevron_right: 'M9 18l6-6-6-6',
+  chevron_down:  'M6 9l6 6 6-6',
+  chevron_up:    'M18 15l-6-6-6 6',
+  menu:   'M3 12h18 M3 6h18 M3 18h18',
+  activity:'M22 12h-4l-3 9L9 3l-3 9H2',
+  trending:'M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6',
+  server:  'M2 2h20a2 2 0 012 2v5a2 2 0 01-2 2H2a2 2 0 01-2-2V4a2 2 0 012-2z M2 14h20a2 2 0 012 2v4a2 2 0 01-2 2H2a2 2 0 01-2-2v-4a2 2 0 012-2z M6 6h.01 M6 18h.01',
+  bar:     'M18 20V10 M12 20V4 M6 20v-6',
+};
+
+function Icon({ name, cls = 'w-4 h-4', sw = 1.75 }) {
+  const d = PATHS[name] || PATHS.info;
+  return html`<svg class=${cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=${sw} stroke-linecap="round" stroke-linejoin="round">
+    ${d.split(' M').map((p,i) => html`<path key=${i} d=${i===0?p:'M'+p}/>`)}
+  </svg>`;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const confVar = c => ({ HIGH:'text-emerald-400 bg-emerald-500/20 border-emerald-500/30', MEDIUM:'text-amber-400 bg-amber-500/20 border-amber-500/30', LOW:'text-red-400 bg-red-500/20 border-red-500/30', INSUFFICIENT:'text-slate-400 bg-slate-700/50 border-slate-600' }[c] || 'text-slate-400 bg-slate-800 border-slate-700');
+const riskVar  = r => ({ LOW:'text-emerald-400 bg-emerald-500/20 border-emerald-500/30', MEDIUM:'text-amber-400 bg-amber-500/20 border-amber-500/30', HIGH:'text-red-400 bg-red-500/20 border-red-500/30', CRITICAL:'text-red-400 bg-red-500/20 border-red-500/30' }[r] || 'text-slate-400 bg-slate-800 border-slate-700');
+const statVar  = s => ({ COMPLETED:'text-emerald-400 bg-emerald-500/20 border-emerald-500/30', ANALYZED:'text-emerald-400 bg-emerald-500/20 border-emerald-500/30', PENDING:'text-brand-400 bg-brand-500/20 border-brand-500/30', INVESTIGATING:'text-brand-400 bg-brand-500/20 border-brand-500/30', AWAITING_APPROVAL:'text-amber-400 bg-amber-500/20 border-amber-500/30', FAILED:'text-red-400 bg-red-500/20 border-red-500/30', REMEDIATING:'text-purple-400 bg-purple-500/20 border-purple-500/30' }[s] || 'text-slate-400 bg-slate-700/50 border-slate-600');
+
+function Badge({ text, cls = '' }) {
+  return html`<span class=${'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ' + cls}>${text}</span>`;
+}
+function Dot({ ok }) {
+  return html`<span class=${'inline-block w-2 h-2 rounded-full flex-shrink-0 ' + (ok === true ? 'bg-emerald-500' : ok === false ? 'bg-red-500' : ok === 'warn' ? 'bg-amber-500' : ok === 'load' ? 'bg-brand-500 blink' : 'bg-slate-500')}></span>`;
+}
+function Spinner({ sz = 'w-5 h-5' }) {
+  return html`<svg class=${'spin ' + sz + ' text-brand-400'} viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+    <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" opacity="0.75"/>
+  </svg>`;
+}
+function Card({ children, cls = '' }) {
+  return html`<div class=${'bg-slate-900 border border-slate-800 rounded-xl ' + cls}>${children}</div>`;
+}
+function Empty({ icon, title, desc, action }) {
+  return html`<div class="flex flex-col items-center justify-center py-16 text-center px-4">
+    <div class="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center mb-4 text-slate-500">
+      <${Icon} name=${icon} cls="w-7 h-7"/>
+    </div>
+    <h3 class="text-slate-300 font-semibold mb-1">${title}</h3>
+    <p class="text-slate-500 text-sm max-w-xs">${desc}</p>
+    ${action && html`<div class="mt-4">${action}</div>`}
+  </div>`;
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+const NAV = [
+  { id:'dashboard',      label:'Dashboard',         icon:'home'    },
+  { id:'troubleshooter', label:'AI Troubleshooter', icon:'zap'     },
+  { id:'investigations', label:'Investigations',    icon:'search'  },
+  { id:'infrastructure', label:'Infrastructure',    icon:'layers'  },
+  { id:'incidents',      label:'Incidents',         icon:'alert'   },
+  { id:'audit',          label:'Audit Logs',        icon:'log'     },
+  { id:'settings',       label:'Settings',          icon:'gear'    },
+];
+
+function Sidebar({ page, setPage, dark, toggleDark, col, setCol }) {
+  return html`
+    <aside class=${'flex-shrink-0 flex flex-col bg-slate-950 border-r border-slate-800 transition-all duration-200 ' + (col ? 'w-14' : 'w-56')}>
+      <div class="h-14 flex items-center px-3.5 border-b border-slate-800 gap-3">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
+          <${Icon} name="cloud" cls="w-4 h-4" sw=${2}/>
+        </div>
+        ${!col && html`<div><div class="text-sm font-bold text-white">CloudOps</div><div class="text-xs text-brand-400">AI Infrastructure</div></div>`}
+      </div>
+      <nav class="flex-1 py-2 overflow-y-auto">
+        ${NAV.map(n => html`
+          <button key=${n.id} onClick=${() => setPage(n.id)}
+            class=${'sidebar-link w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-medium ' +
+              (page===n.id ? 'bg-brand-500/10 text-brand-400 border-r-2 border-brand-500' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')}>
+            <${Icon} name=${n.icon} cls="w-4 h-4 flex-shrink-0"/>
+            ${!col && html`<span class="whitespace-nowrap truncate">${n.label}</span>`}
+          </button>`)}
+      </nav>
+      <div class="border-t border-slate-800 p-2.5 flex items-center gap-1">
+        <button onClick=${toggleDark} class="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors" title="Toggle theme">
+          <${Icon} name=${dark ? 'sun' : 'moon'} cls="w-4 h-4"/>
+        </button>
+        ${!col && html`
+          <button onClick=${() => setCol(true)} class="ml-auto p-2 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition-colors">
+            <${Icon} name="chevron_right" cls="w-4 h-4"/>
+          </button>`}
+        ${col && html`
+          <button onClick=${() => setCol(false)} class="p-2 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition-colors">
+            <${Icon} name="chevron_right" cls="w-4 h-4 rotate-180 inline-block"/>
+          </button>`}
+      </div>
+    </aside>`;
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+const PAGE_LABELS = { dashboard:'Dashboard', troubleshooter:'AI Troubleshooter', investigations:'Investigations', infrastructure:'Infrastructure', incidents:'Incidents', audit:'Audit Logs', settings:'Settings' };
+function Header({ page, health, setPage }) {
+  return html`
+    <header class="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-6 flex-shrink-0">
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-slate-500">CloudOps</span>
+        <span class="text-slate-700">›</span>
+        <span class="font-medium text-slate-200">${PAGE_LABELS[page] || page}</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+          <${Dot} ok=${health?.status === 'ok' ? true : health === null ? 'load' : false}/>
+          <span>API ${health?.status === 'ok' ? 'Online' : health === null ? 'Connecting…' : 'Offline'}</span>
+        </div>
+        <button onClick=${() => setPage('troubleshooter')}
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg transition-colors">
+          <${Icon} name="zap" cls="w-3.5 h-3.5"/>
+          <span class="hidden sm:inline">Investigate</span>
+        </button>
+      </div>
+    </header>`;
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ health, ready, investigations, setPage }) {
+  const stats = { total: investigations.length, high: investigations.filter(i=>i.confidence==='HIGH').length, pending: investigations.filter(i=>i.approval_status==='PENDING'&&i.remediation?.length>0).length, done: investigations.filter(i=>i.status==='COMPLETED').length };
+  const aiReady = ready?.data?.checks?.openai_key_configured;
+  return html`<div class="p-6 space-y-6 fade-in overflow-auto">
+    <!-- Status Banner -->
+    <div class=${'rounded-xl border p-4 flex items-center gap-3 ' + (health?.status==='ok' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-slate-800 border-slate-700')}>
+      <${Dot} ok=${health?.status==='ok' ? true : 'load'}/>
+      <div class="flex-1">
+        <div class="text-sm font-semibold text-slate-200">${health?.status==='ok' ? 'CloudOps AI is Online' : 'Connecting to CloudOps AI…'}</div>
+        <div class="text-xs text-slate-400">${aiReady ? 'All systems operational — AI investigation ready' : 'Set OPENAI_API_KEY in .env to enable AI analysis'}</div>
+      </div>
+      <${Badge} text=${aiReady ? 'AI Ready' : 'Connecting'} cls=${aiReady ? confVar('HIGH') : confVar('INSUFFICIENT')}/>
+    </div>
+
+    <!-- Metrics -->
+    <div>
+      <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Session Activity</h2>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        ${[
+          { label:'Total Investigations', val: stats.total, icon:'search', cls: stats.total > 0 ? 'text-brand-400' : 'text-slate-300' },
+          { label:'High Confidence RCA',  val: stats.high,  icon:'check',  cls: stats.high  > 0 ? 'text-emerald-400' : 'text-slate-300' },
+          { label:'Pending Approval',     val: stats.pending, icon:'lock', cls: stats.pending > 0 ? 'text-amber-400' : 'text-slate-300' },
+          { label:'Completed',            val: stats.done,  icon:'check',  cls: stats.done  > 0 ? 'text-emerald-400' : 'text-slate-300' },
+        ].map(m => html`
+          <${Card} key=${m.label} cls="p-5">
+            <div class="flex items-start justify-between mb-3">
+              <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                <${Icon} name=${m.icon} cls="w-4 h-4"/>
+              </div>
+            </div>
+            <div class=${'text-2xl font-bold mb-0.5 ' + m.cls}>${m.val}</div>
+            <div class="text-xs text-slate-500">${m.label}</div>
+          </${Card}>`)}
+      </div>
+    </div>
+
+    <!-- Infrastructure Tiles -->
+    <div>
+      <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Infrastructure Tools</h2>
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        ${[
+          { name:'Kubernetes',  icon:'layers', detail:'14 read-only tools', tags:['get_pods','get_events'] },
+          { name:'Docker',      icon:'server', detail:'3 read-only tools',  tags:['docker_ps','docker_inspect'] },
+          { name:'GCP / GKE',   icon:'cloud',  detail:'4 read-only tools',  tags:['describe_cluster'] },
+          { name:'Terraform',   icon:'bar',    detail:'3 read-only tools',  tags:['validate','plan'] },
+        ].map(t => html`
+          <${Card} key=${t.name} cls="p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                <${Icon} name=${t.icon} cls="w-3.5 h-3.5"/>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-slate-300">${t.name}</div>
+                <div class="text-xs text-slate-500">${t.detail}</div>
+              </div>
+              <${Dot} ok=${undefined}/>
+            </div>
+            <div class="flex flex-wrap gap-1">${t.tags.map(tg => html`<${Badge} key=${tg} text=${tg} cls="text-slate-400 bg-slate-800 border-slate-700"/>`)}</div>
+          </${Card}>`)}
+      </div>
+    </div>
+
+    <!-- CloudOps AI Status -->
+    <div>
+      <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">CloudOps AI Engine</h2>
+      <${Card} cls="p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          ${[
+            ['LangGraph Workflow','10 nodes compiled', true],
+            ['Evidence Engine','11 pattern extractors', true],
+            ['Root Cause Engine','11 incident templates', true],
+            ['Remediation Planner','11 playbooks loaded', true],
+            ['Approval Service','PENDING → APPROVED/REJECTED', true],
+            ['AI Model', aiReady ? 'gpt-4o configured' : 'No API key — add to .env', !!aiReady],
+          ].map(([lbl, det, ok]) => html`
+            <div key=${lbl} class="flex items-center gap-2">
+              <${Dot} ok=${ok ? true : 'warn'}/>
+              <div>
+                <div class="text-xs font-medium text-slate-300">${lbl}</div>
+                <div class="text-xs text-slate-500">${det}</div>
+              </div>
+            </div>`)}
+        </div>
+      </${Card}>
+    </div>
+
+    <!-- Recent Investigations -->
+    ${investigations.length > 0 && html`
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent Investigations</h2>
+          <button onClick=${() => setPage('investigations')} class="text-xs text-brand-400 hover:text-brand-300">View all</button>
+        </div>
+        <div class="space-y-2">
+          ${[...investigations].slice(-3).reverse().map(inv => html`
+            <${Card} key=${inv.request_id} cls="p-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-300 truncate">${inv.userRequest?.slice(0,80)}</div>
+                <div class="text-xs text-slate-600 mt-0.5 font-mono">${inv.request_id?.slice(0,12)}…</div>
+              </div>
+              <${Badge} text=${inv.confidence} cls=${confVar(inv.confidence)}/>
+              <${Badge} text=${inv.status} cls=${statVar(inv.status)}/>
+            </${Card}>`)}
+        </div>
+      </div>`}
+
+    ${investigations.length === 0 && html`
+      <${Card} cls="p-8 text-center">
+        <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-brand-500/60 mx-auto mb-3">
+          <${Icon} name="zap" cls="w-6 h-6"/>
+        </div>
+        <h3 class="text-sm font-semibold text-slate-300 mb-1">No investigations yet</h3>
+        <p class="text-xs text-slate-500 mb-4">Describe an infrastructure issue to CloudOps AI</p>
+        <button onClick=${() => setPage('troubleshooter')}
+          class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg transition-colors">
+          Start Investigation
+        </button>
+      </${Card}>`}
+  </div>`;
+}
+
+// ─── Investigation Progress ───────────────────────────────────────────────────
+const STAGES = [
+  { label:'Request Analysis',             icon:'activity', ms:150  },
+  { label:'Building Investigation Plan',  icon:'layers',   ms:500  },
+  { label:'Collecting Evidence',          icon:'search',   ms:1100 },
+  { label:'Analyzing Infrastructure',     icon:'server',   ms:1700 },
+  { label:'Identifying Root Cause',       icon:'alert',    ms:2200 },
+  { label:'Generating Recommendations',   icon:'shield',   ms:2700 },
+  { label:'Investigation Complete',       icon:'check',    ms:3100 },
+];
+
+function Progress({ elapsed }) {
+  return html`<div class="space-y-2">
+    ${STAGES.map((s, i) => {
+      const done   = elapsed >= s.ms;
+      const active = elapsed >= (STAGES[i-1]?.ms || 0) && elapsed < s.ms;
+      return html`
+        <div key=${s.label} class=${'flex items-center gap-3 p-2.5 rounded-lg transition-all ' +
+          (done ? 'bg-slate-800/40' : active ? 'bg-brand-500/10 border border-brand-500/20' : 'opacity-30')}>
+          <div class=${'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ' +
+            (done ? 'bg-emerald-500/20 text-emerald-400' : active ? 'bg-brand-500/20 text-brand-400' : 'bg-slate-800 text-slate-600')}>
+            ${active ? html`<${Spinner} sz="w-3.5 h-3.5"/>` : html`<${Icon} name=${done ? 'check' : s.icon} cls="w-3.5 h-3.5"/>`}
+          </div>
+          <span class=${'text-xs font-medium ' + (done ? 'text-slate-400' : active ? 'text-brand-300' : 'text-slate-600')}>${s.label}</span>
+          ${done && html`<${Icon} name="check" cls="w-3.5 h-3.5 text-emerald-500 ml-auto"/>`}
+        </div>`;
+    })}
+  </div>`;
+}
+
+// ─── Root Cause Card ──────────────────────────────────────────────────────────
+function RootCauseCard({ rc }) {
+  const [open, setOpen] = useState(false);
+  if (!rc) return null;
+  return html`
+    <${Card} cls="overflow-hidden fade-in">
+      <div class=${'px-5 py-3 border-b border-slate-800 flex items-center justify-between ' +
+        (rc.confidence==='HIGH' ? 'bg-emerald-500/5' : rc.confidence==='MEDIUM' ? 'bg-amber-500/5' : 'bg-slate-800/40')}>
+        <div class="flex items-center gap-2">
+          <${Icon} name="alert" cls="w-4 h-4 text-slate-400"/>
+          <span class="text-sm font-semibold text-slate-200">Root Cause Analysis</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <${Badge} text=${rc.confidence + ' confidence'} cls=${confVar(rc.confidence)}/>
+          <${Badge} text=${rc.risk + ' risk'}             cls=${riskVar(rc.risk)}/>
+        </div>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Incident Status</div>
+            <${Badge} text=${rc.incident_status} cls=${rc.incident_status==='ACTIVE' ? riskVar('HIGH') : confVar('INSUFFICIENT')}/>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Affected Resource</div>
+            <code class="text-xs text-brand-300 bg-slate-800 px-2 py-0.5 rounded">${rc.affected_resource}</code>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500 mb-1">Root Cause</div>
+          <p class="text-sm text-slate-200 leading-relaxed">${rc.root_cause}</p>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500 mb-1">Reasoning</div>
+          <p class="text-xs text-slate-400 leading-relaxed bg-slate-800/50 rounded-lg p-3 font-mono">${rc.reasoning_summary}</p>
+        </div>
+        ${rc.alternative_causes?.length > 0 && html`
+          <div>
+            <button onClick=${() => setOpen(o=>!o)} class="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 mb-2">
+              <${Icon} name=${open ? 'chevron_up' : 'chevron_down'} cls="w-3 h-3"/>
+              Alternative Causes (${rc.alternative_causes.length})
+            </button>
+            ${open && html`<ul class="space-y-1.5 fade-in">
+              ${rc.alternative_causes.map((c,i) => html`<li key=${i} class="flex items-start gap-2 text-xs text-slate-400"><span class="text-brand-500 flex-shrink-0">›</span>${c}</li>`)}
+            </ul>`}
+          </div>`}
+        ${rc.recommended_next_investigation?.length > 0 && html`
+          <div>
+            <div class="text-xs text-slate-500 mb-2">Recommended Next Steps</div>
+            <ul class="space-y-1.5">
+              ${rc.recommended_next_investigation.map((s,i) => html`
+                <li key=${i} class="flex items-start gap-2 text-xs text-slate-300">
+                  <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs flex-shrink-0">${i+1}</span>${s}
+                </li>`)}
+            </ul>
+          </div>`}
+      </div>
+    </${Card}>`;
+}
+
+// ─── Evidence List ────────────────────────────────────────────────────────────
+function EvidItem({ item, idx }) {
+  const [open, setOpen] = useState(false);
+  return html`
+    <div class=${'rounded-lg border overflow-hidden ' + (item.is_inference ? 'border-purple-500/20 bg-purple-500/5' : 'border-slate-700 bg-slate-800/30')}>
+      <button onClick=${() => setOpen(o=>!o)} class="w-full flex items-center gap-3 p-3 text-left hover:bg-slate-800/50 transition-colors">
+        <div class=${'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ' + (item.is_inference ? 'bg-purple-500/20 text-purple-400' : 'bg-brand-500/20 text-brand-400')}>${idx+1}</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-slate-300 truncate">${item.observation}</p>
+          <div class="flex items-center gap-2 mt-0.5 text-xs text-slate-600">
+            <span>${item.source}</span><span>·</span><span>${item.resource}</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          ${item.is_inference && html`<${Badge} text="Inference" cls="text-purple-400 bg-purple-500/20 border-purple-500/30"/>`}
+          <${Badge} text=${item.confidence} cls=${confVar(item.confidence)}/>
+          <${Icon} name=${open ? 'chevron_up' : 'chevron_down'} cls="w-3 h-3 text-slate-500"/>
+        </div>
+      </button>
+      ${open && html`
+        <div class="px-4 pb-3 pt-3 border-t border-slate-700/50 fade-in text-xs">
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <div class="text-slate-500">Source: <span class="text-slate-300">${item.source}</span></div>
+            <div class="text-slate-500">Resource: <code class="text-brand-300">${item.resource}</code></div>
+          </div>
+          <p class="text-slate-400 leading-relaxed">${item.observation}</p>
+          ${item.is_inference && html`<div class="mt-2 text-xs text-purple-400 flex items-center gap-1"><${Icon} name="info" cls="w-3 h-3"/>Inference — not a directly confirmed observation</div>`}
+        </div>`}
+    </div>`;
+}
+
+function EvidenceList({ evidence }) {
+  const conf = evidence.filter(e => !e.is_inference);
+  const inf  = evidence.filter(e => e.is_inference);
+  if (!evidence.length) return null;
+  return html`
+    <${Card} cls="overflow-hidden fade-in">
+      <div class="px-5 py-3 border-b border-slate-800 flex items-center gap-2">
+        <${Icon} name="eye" cls="w-4 h-4 text-slate-400"/>
+        <span class="text-sm font-semibold text-slate-200">Evidence</span>
+        <${Badge} text=${conf.length + ' confirmed'} cls="text-brand-400 bg-brand-500/20 border-brand-500/30"/>
+        ${inf.length > 0 && html`<${Badge} text=${inf.length + ' inferences'} cls="text-purple-400 bg-purple-500/20 border-purple-500/30"/>`}
+      </div>
+      <div class="p-4 space-y-2">
+        ${evidence.map((item, i) => html`<${EvidItem} key=${i} item=${item} idx=${i}/>`)}
+      </div>
+    </${Card}>`;
+}
+
+// ─── Remediation Panel ────────────────────────────────────────────────────────
+function RemediationPanel({ result }) {
+  const [approver, setApprover] = useState('');
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [decision, setDecision] = useState(null);
+  const [err, setErr] = useState(null);
+
+  if (!result.remediation?.length) return null;
+
+  const decide = async (approved) => {
+    if (!approver.trim()) { setErr('Approver name is required'); return; }
+    setLoading(true); setErr(null);
+    try {
+      const r = await api.approve(result.request_id, approved, approver.trim(), reason || undefined);
+      setDecision({ approved, record: r });
+    } catch(e) { setErr(e.message); }
+    finally { setLoading(false); }
+  };
+
+  return html`
+    <${Card} cls="overflow-hidden fade-in">
+      <div class="px-5 py-3 border-b border-slate-800 flex items-center gap-2">
+        <${Icon} name="shield" cls="w-4 h-4 text-slate-400"/>
+        <span class="text-sm font-semibold text-slate-200">Remediation Plan</span>
+        <${Badge} text="Approval Required" cls="text-amber-400 bg-amber-500/20 border-amber-500/30"/>
+      </div>
+      <div class="p-5">
+        <!-- Safety notice -->
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-5">
+          <${Icon} name="lock" cls="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0"/>
+          <div>
+            <div class="text-xs font-semibold text-amber-300">Human Approval Required Before Any Execution</div>
+            <div class="text-xs text-amber-400/80 mt-0.5">CloudOps AI will NEVER execute infrastructure changes without your explicit approval.</div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="space-y-3 mb-5">
+          ${result.remediation.map((a, i) => html`
+            <div key=${a.remediation_id} class="rounded-lg border border-slate-700 bg-slate-800/30 p-4">
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-5 h-5 rounded-full bg-brand-500/20 text-brand-400 text-xs font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+                  <span class="text-xs font-semibold text-slate-300">Action</span>
+                </div>
+                <div class="flex items-center gap-1.5 flex-wrap justify-end">
+                  <${Badge} text=${a.risk + ' risk'} cls=${riskVar(a.risk)}/>
+                  ${a.approval_required && html`<${Badge} text="Approval Required" cls="text-amber-400 bg-amber-500/20 border-amber-500/30"/>`}
+                </div>
+              </div>
+              <p class="text-xs text-slate-300 leading-relaxed mb-3">${a.action}</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div class="bg-slate-900 rounded p-2">
+                  <div class="text-slate-500 mb-0.5">Expected Result</div>
+                  <div class="text-slate-400">${a.expected_result}</div>
+                </div>
+                <div class="bg-slate-900 rounded p-2">
+                  <div class="text-slate-500 mb-0.5">Rollback Plan</div>
+                  <div class="text-slate-400">${a.rollback}</div>
+                </div>
+              </div>
+            </div>`)}
+        </div>
+
+        <!-- Approval Form -->
+        ${!decision ? html`
+          <div class="border border-slate-700 rounded-xl p-4 bg-slate-900">
+            <div class="text-xs font-semibold text-slate-300 mb-3">Submit Approval Decision</div>
+            <div class="space-y-3 mb-4">
+              <div>
+                <label class="text-xs text-slate-400 block mb-1">Your Name / Team *</label>
+                <input value=${approver} onInput=${e => setApprover(e.target.value)} placeholder="e.g. sre-lead, ops-team"
+                  class="w-full text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 outline-none focus:border-brand-500 transition-colors"/>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400 block mb-1">Reason (optional)</label>
+                <input value=${reason} onInput=${e => setReason(e.target.value)} placeholder="e.g. Reviewed and safe to proceed"
+                  class="w-full text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 outline-none focus:border-brand-500 transition-colors"/>
+              </div>
+            </div>
+            ${err && html`<div class="text-xs text-red-400 mb-3 flex items-center gap-1"><${Icon} name="alert" cls="w-3 h-3"/>${err}</div>`}
+            <div class="flex gap-3">
+              <button onClick=${() => decide(true)} disabled=${loading}
+                class="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                ${loading ? html`<${Spinner} sz="w-3.5 h-3.5"/>` : html`<${Icon} name="check" cls="w-3.5 h-3.5"/>`}
+                Approve
+              </button>
+              <button onClick=${() => decide(false)} disabled=${loading}
+                class="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600/80 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                <${Icon} name="xmark" cls="w-3.5 h-3.5"/>
+                Reject
+              </button>
+            </div>
+          </div>` : html`
+          <div class=${'rounded-xl p-4 border ' + (decision.approved ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30')}>
+            <div class="flex items-center gap-3">
+              <div class=${'w-8 h-8 rounded-full flex items-center justify-center ' + (decision.approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>
+                <${Icon} name=${decision.approved ? 'check' : 'xmark'} cls="w-4 h-4"/>
+              </div>
+              <div>
+                <div class=${'text-sm font-semibold ' + (decision.approved ? 'text-emerald-300' : 'text-red-300')}>
+                  Remediation ${decision.approved ? 'Approved' : 'Rejected'}
+                </div>
+                <div class="text-xs text-slate-400">By ${decision.record.approver} · ID: ${decision.record.approval_id?.slice(0,12)}…</div>
+              </div>
+              <${Badge} text=${decision.record.status} cls=${decision.approved ? confVar('HIGH') : riskVar('HIGH')}/>
+            </div>
+          </div>`}
+      </div>
+    </${Card}>`;
+}
+
+// ─── AI Troubleshooter ────────────────────────────────────────────────────────
+const EXAMPLES = [
+  'My pod is in CrashLoopBackOff with 8 restarts',
+  'ImagePullBackOff — cannot pull from Artifact Registry',
+  'Readiness probe failing — pod not receiving traffic',
+  'Terraform plan shows unexpected destroy operations',
+  'Service has no endpoints — Connection refused',
+];
+
+function Troubleshooter({ onResult }) {
+  const [input, setInput] = useState('');
+  const [ns, setNs] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timer = useRef();
+
+  useEffect(() => {
+    if (loading) {
+      const t0 = Date.now();
+      timer.current = setInterval(() => setElapsed(Date.now()-t0), 80);
+    } else {
+      clearInterval(timer.current);
+      setElapsed(0);
+    }
+    return () => clearInterval(timer.current);
+  }, [loading]);
+
+  const submit = async () => {
+    if (!input.trim()) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await api.troubleshoot(input.trim(), ns.trim() || undefined);
+      onResult({ ...res, userRequest: input.trim() });
+    } catch(e) { setErr(e.message || 'Investigation failed'); }
+    finally { setLoading(false); }
+  };
+
+  return html`<div class="p-6 max-w-3xl mx-auto fade-in">
+    <div class="mb-6 flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
+        <${Icon} name="zap" cls="w-5 h-5" sw=${2.5}/>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-slate-100">CloudOps AI</h1>
+        <p class="text-sm text-slate-400">Intelligent root cause analysis for infrastructure incidents</p>
+      </div>
+    </div>
+
+    ${!loading ? html`
+      <div class="space-y-4">
+        <${Card} cls="p-4">
+          <label class="text-xs font-medium text-slate-400 block mb-2">Describe the infrastructure issue</label>
+          <textarea value=${input} onInput=${e => setInput(e.target.value)} rows="5"
+            placeholder="Describe an infrastructure issue, paste logs, or enter an error message…
+
+Examples:
+• My pod is in CrashLoopBackOff
+• Terraform plan failed with invalid configuration
+• Service has no endpoints — traffic not routing"
+            class="w-full text-sm bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 outline-none focus:border-brand-500 transition-colors resize-none font-sans leading-relaxed"
+            onKeyDown=${e => { if ((e.metaKey||e.ctrlKey) && e.key==='Enter') submit(); }}
+          ></textarea>
+          <div class="flex items-center justify-between mt-1.5 mb-3">
+            <span class="text-xs text-slate-600">${input.length}/2000 · Ctrl+Enter to submit</span>
+            ${input && html`<button onClick=${() => setInput('')} class="text-xs text-slate-600 hover:text-slate-400">Clear</button>`}
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="text-xs text-slate-500 block mb-1">Namespace (optional)</label>
+              <input value=${ns} onInput=${e => setNs(e.target.value)} placeholder="employment-management"
+                class="w-full text-xs bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 outline-none focus:border-brand-500 transition-colors"/>
+            </div>
+            <div class="self-end">
+              <button onClick=${submit} disabled=${!input.trim()}
+                class="flex items-center gap-2 px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <${Icon} name="send" cls="w-4 h-4"/>Analyze
+              </button>
+            </div>
+          </div>
+        </${Card}>
+
+        ${err && html`
+          <div class="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 fade-in">
+            <${Icon} name="alert" cls="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0"/>
+            <div>
+              <div class="text-sm font-semibold text-red-300">Investigation Failed</div>
+              <div class="text-xs text-red-400/80 mt-0.5">${err}</div>
+            </div>
+          </div>`}
+
+        <div>
+          <div class="text-xs text-slate-500 mb-2">Quick examples</div>
+          <div class="flex flex-wrap gap-2">
+            ${EXAMPLES.map((p,i) => html`
+              <button key=${i} onClick=${() => setInput(p)}
+                class="text-xs px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-brand-500/50 text-slate-400 hover:text-slate-200 transition-all">
+                ${p.length > 42 ? p.slice(0,42)+'…' : p}
+              </button>`)}
+          </div>
+        </div>
+      </div>` : html`
+
+      <${Card} cls="p-6 fade-in">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center">
+            <${Spinner} sz="w-4 h-4"/>
+          </div>
+          <div>
+            <div class="text-sm font-semibold text-slate-200">CloudOps AI Investigating</div>
+            <div class="text-xs text-slate-500 font-mono">${(elapsed/1000).toFixed(1)}s elapsed</div>
+          </div>
+        </div>
+        <div class="text-xs text-slate-500 bg-slate-800/50 rounded-lg p-3 mb-4 font-mono leading-relaxed">
+          "${input.slice(0,110)}${input.length>110?'…':''}"
+        </div>
+        <${Progress} elapsed=${elapsed}/>
+      </${Card}>`}
+  </div>`;
+}
+
+// ─── Investigation Result ─────────────────────────────────────────────────────
+function InvResult({ result, onNew }) {
+  const [tab, setTab] = useState('summary');
+  const tabs = [
+    { id:'summary',     label:'Summary',  icon:'activity' },
+    { id:'evidence',    label:`Evidence (${result.evidence?.length||0})`,   icon:'eye'    },
+    { id:'remediation', label:`Remediation (${result.remediation?.length||0})`, icon:'shield' },
+  ];
+  return html`<div class="p-6 max-w-3xl mx-auto fade-in">
+    <!-- Header -->
+    <div class="flex items-start gap-3 mb-4">
+      <div class=${'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ' +
+        (result.confidence==='HIGH' ? 'bg-emerald-500/20 text-emerald-400' : result.confidence==='MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-400')}>
+        <${Icon} name=${result.confidence==='INSUFFICIENT' ? 'info' : 'check'} cls="w-5 h-5"/>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-base font-bold text-slate-100">Investigation Complete</h2>
+        <div class="text-xs text-slate-500 font-mono">ID: ${result.request_id}</div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <${Badge} text=${result.status} cls=${statVar(result.status)}/>
+        <${Badge} text=${result.confidence} cls=${confVar(result.confidence)}/>
+        <button onClick=${onNew} class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-1">
+          <${Icon} name="plus" cls="w-3 h-3"/>New
+        </button>
+      </div>
+    </div>
+
+    <!-- Issues -->
+    ${result.issues?.length > 0 && html`
+      <div class="mb-4 flex flex-wrap gap-2">
+        ${result.issues.map((issue,i) => html`
+          <div key=${i} class="flex items-center gap-1.5 text-xs bg-red-500/10 border border-red-500/20 text-red-300 px-3 py-1 rounded-full">
+            <${Icon} name="alert" cls="w-3 h-3"/>${issue}
+          </div>`)}
+      </div>`}
+
+    <!-- Request snippet -->
+    ${result.userRequest && html`
+      <div class="bg-slate-800/50 rounded-xl p-3 mb-4 flex items-start gap-2 border border-slate-700">
+        <${Icon} name="activity" cls="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0"/>
+        <p class="text-xs text-slate-400 leading-relaxed">${result.userRequest}</p>
+      </div>`}
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-4 bg-slate-900 p-1 rounded-xl border border-slate-800">
+      ${tabs.map(t => html`
+        <button key=${t.id} onClick=${() => setTab(t.id)}
+          class=${'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-lg transition-all ' +
+            (tab===t.id ? 'bg-slate-800 text-slate-200 shadow-sm' : 'text-slate-500 hover:text-slate-300')}>
+          <${Icon} name=${t.icon} cls="w-3.5 h-3.5"/>
+          <span class="hidden sm:inline">${t.label}</span>
+          <span class="sm:hidden">${t.id==='summary'?'Summary':t.id==='evidence'?'Ev':'Rem'}</span>
+        </button>`)}
+    </div>
+
+    <!-- Tab content -->
+    ${tab==='summary'    && html`<div class="space-y-4"><${RootCauseCard} rc=${result.root_cause}/></div>`}
+    ${tab==='evidence'   && html`<div class="space-y-4">${result.evidence?.length ? html`<${EvidenceList} evidence=${result.evidence}/>` : html`<${Empty} icon="eye" title="No evidence collected" desc="kubectl/cloud tools could not collect evidence. Verify kubeconfig is configured."/>`}</div>`}
+    ${tab==='remediation'&& html`<div class="space-y-4">${result.remediation?.length ? html`<${RemediationPanel} result=${result}/>` : html`<${Empty} icon="shield" title="No remediation recommended" desc=${result.confidence==='INSUFFICIENT' ? 'Insufficient evidence to generate safe remediation.' : 'No remediation actions generated.'}/>`}</div>`}
+  </div>`;
+}
+
+// ─── Investigations List ──────────────────────────────────────────────────────
+function InvList({ investigations, onSelect }) {
+  return html`<div class="p-6 fade-in">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-base font-bold text-slate-100">Investigation History</h2>
+      <${Badge} text=${investigations.length + ' total'} cls="text-brand-400 bg-brand-500/20 border-brand-500/30"/>
+    </div>
+    ${!investigations.length ? html`<${Empty} icon="search" title="No investigations yet" desc="Run your first AI investigation from the Troubleshooter page."/>` :
+      html`<div class="space-y-3">
+        ${[...investigations].reverse().map(inv => html`
+          <${Card} key=${inv.request_id} cls="p-4 cursor-pointer hover:border-slate-700 transition-colors" onClick=${() => onSelect(inv)}>
+            <div class="flex items-start gap-3">
+              <div class=${'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ' +
+                (inv.confidence==='HIGH' ? 'bg-emerald-500/20 text-emerald-400' : inv.confidence==='MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-400')}>
+                <${Icon} name="search" cls="w-4 h-4"/>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-slate-200 truncate">${inv.userRequest || inv.request_id}</p>
+                <div class="text-xs text-slate-500 mt-0.5 font-mono">${inv.request_id?.slice(0,16)}…</div>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <${Badge} text=${inv.confidence} cls=${confVar(inv.confidence)}/>
+                <${Badge} text=${inv.status} cls=${statVar(inv.status)}/>
+                <${Icon} name="chevron_right" cls="w-4 h-4 text-slate-600"/>
+              </div>
+            </div>
+            ${inv.issues?.length > 0 && html`<div class="mt-2 flex flex-wrap gap-1 ml-11">
+              ${inv.issues.slice(0,3).map((issue,i) => html`<${Badge} key=${i} text=${issue} cls=${riskVar('HIGH')}/>`)}
+            </div>`}
+          </${Card}>`)}
+      </div>`}
+  </div>`;
+}
+
+// ─── Infrastructure Page ──────────────────────────────────────────────────────
+function Infrastructure() {
+  const sections = [
+    { title:'Kubernetes', icon:'layers', note:'14 read-only tools — connect kubectl to employment-management-gke', items:[
+      { name:'GetPods',           detail:'List pods with status and restart count' },
+      { name:'DescribePod',       detail:'Full pod spec and event timeline'        },
+      { name:'GetPodLogs',        detail:'Container logs with tail support'        },
+      { name:'GetEvents',         detail:'Kubernetes events sorted by time'        },
+      { name:'GetDeployment',     detail:'Deployment replica status'               },
+      { name:'GetService',        detail:'Service endpoints and selectors'         },
+      { name:'GetEndpointSlices', detail:'Endpoint health registration'            },
+      { name:'GetGateway',        detail:'Gateway API resource status'             },
+      { name:'GetHTTPRoute',      detail:'HTTPRoute acceptance status'             },
+    ]},
+    { title:'Docker', icon:'server', note:'3 read-only tools — Docker daemon must be accessible', items:[
+      { name:'DockerImages',  detail:'List local images with tags/sizes'   },
+      { name:'DockerPs',      detail:'Running and stopped containers'      },
+      { name:'DockerInspect', detail:'Container or image inspection'       },
+    ]},
+    { title:'GCP', icon:'cloud', note:'4 read-only tools — gcloud must be authenticated (gcp-dev-july-2026)', items:[
+      { name:'GCloudConfigProject',   detail:'Active GCP project identity'       },
+      { name:'GCloudDescribeCluster', detail:'GKE cluster status and nodes'      },
+      { name:'GCloudListClusters',    detail:'All GKE clusters in region'        },
+      { name:'GCloudDescribeInstance',detail:'Compute instance details'          },
+    ]},
+    { title:'Terraform', icon:'bar', note:'3 read-only tools — terraform plan only, apply strictly blocked', items:[
+      { name:'TerraformFmtCheck', detail:'Format validation (never modifies files)' },
+      { name:'TerraformValidate', detail:'Configuration syntax check'               },
+      { name:'TerraformPlan',     detail:'Dry-run plan with -lock=false'             },
+    ]},
+  ];
+  return html`<div class="p-6 fade-in">
+    <div class="mb-5">
+      <h2 class="text-base font-bold text-slate-100">Infrastructure Tools</h2>
+      <p class="text-xs text-slate-500 mt-1">All tools are read-only. Configure credentials to enable live infrastructure analysis.</p>
+    </div>
+    ${sections.map(sec => html`
+      <div key=${sec.title} class="mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <${Icon} name=${sec.icon} cls="w-4 h-4 text-slate-400"/>
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">${sec.title}</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-2">
+          ${sec.items.map(item => html`
+            <${Card} key=${item.name} cls="p-3.5 flex items-start gap-3">
+              <div class="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-slate-400 flex-shrink-0 mt-0.5">
+                <${Icon} name=${sec.icon} cls="w-3 h-3"/>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-slate-300">${item.name}</div>
+                <div class="text-xs text-slate-500 mt-0.5">${item.detail}</div>
+                <${Badge} text="read-only" cls="text-slate-400 bg-slate-800 border-slate-700 mt-1.5"/>
+              </div>
+            </${Card}>`)}
+        </div>
+        <p class="text-xs text-slate-600 flex items-center gap-1"><${Icon} name="info" cls="w-3 h-3"/>${sec.note}</p>
+      </div>`)}
+    <${Card} cls="p-4 border-amber-500/20 bg-amber-500/5">
+      <div class="flex items-start gap-3">
+        <${Icon} name="shield" cls="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0"/>
+        <div>
+          <div class="text-xs font-semibold text-amber-300 mb-1">Safety Guarantees</div>
+          <ul class="text-xs text-amber-400/80 space-y-0.5">
+            <li>· shell=False on every subprocess — no command injection possible</li>
+            <li>· Blocked: kubectl delete/apply/patch/exec/scale, terraform apply/destroy, docker rm/rmi/kill</li>
+            <li>· All parameters validated against injection patterns before execution</li>
+            <li>· Human approval required before any remediation action executes</li>
+          </ul>
+        </div>
+      </div>
+    </${Card}>
+  </div>`;
+}
+
+// ─── Incidents ────────────────────────────────────────────────────────────────
+function Incidents({ investigations, setPage }) {
+  const active   = investigations.filter(i => i.status !== 'COMPLETED' || i.errors?.length > 0);
+  const resolved = investigations.filter(i => i.status === 'COMPLETED' && !i.errors?.length);
+  return html`<div class="p-6 fade-in">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-base font-bold text-slate-100">Incidents</h2>
+      <button onClick=${() => setPage('troubleshooter')} class="flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300">
+        <${Icon} name="plus" cls="w-3.5 h-3.5"/>New Investigation
+      </button>
+    </div>
+    ${!investigations.length ? html`<${Empty} icon="alert" title="No incidents recorded" desc="Incidents are tracked automatically when you run investigations." action=${html`<button onClick=${() => setPage('troubleshooter')} class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg">Start Investigation</button>`}/>` :
+      html`<div class="space-y-6">
+        ${active.length > 0 && html`
+          <div>
+            <h3 class="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <${Icon} name="alert" cls="w-3.5 h-3.5"/>Active (${active.length})
+            </h3>
+            <div class="space-y-2">
+              ${active.map(i => html`<${IncRow} key=${i.request_id} i=${i}/>`)}
+            </div>
+          </div>`}
+        ${resolved.length > 0 && html`
+          <div>
+            <h3 class="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <${Icon} name="check" cls="w-3.5 h-3.5"/>Resolved (${resolved.length})
+            </h3>
+            <div class="space-y-2">
+              ${resolved.map(i => html`<${IncRow} key=${i.request_id} i=${i}/>`)}
+            </div>
+          </div>`}
+      </div>`}
+  </div>`;
+}
+function IncRow({ i }) {
+  return html`<${Card} cls="p-3 flex items-center gap-3">
+    <div class=${'w-2 h-8 rounded-full flex-shrink-0 ' + (i.status==='COMPLETED'&&!i.errors?.length ? 'bg-emerald-500' : i.confidence==='HIGH' ? 'bg-red-500' : 'bg-amber-500')}></div>
+    <div class="flex-1 min-w-0">
+      <p class="text-xs text-slate-300 truncate">${i.userRequest || 'Investigation'}</p>
+      ${i.root_cause && html`<p class="text-xs text-slate-500 mt-0.5 truncate">${i.root_cause.root_cause?.slice(0,80)}…</p>`}
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <${Badge} text=${i.confidence} cls=${confVar(i.confidence)}/>
+      <${Badge} text=${i.status} cls=${statVar(i.status)}/>
+    </div>
+  </${Card}>`;
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+function AuditLogs({ investigations }) {
+  const logs = investigations.flatMap(inv => [
+    { ts: inv.created_at, type:'INVESTIGATION_STARTED',   reqId: inv.request_id, detail:`Request: ${inv.userRequest?.slice(0,60)}` },
+    ...(inv.status==='COMPLETED' ? [{ ts: inv.created_at, type:'INVESTIGATION_COMPLETED', reqId: inv.request_id, detail:`Status: ${inv.status} · Confidence: ${inv.confidence}` }] : []),
+    ...(inv.remediation?.length  ? [{ ts: inv.created_at, type:'REMEDIATION_PLANNED',     reqId: inv.request_id, detail:`${inv.remediation.length} action(s) planned · approval_required=true` }] : []),
+  ]).sort((a,b) => new Date(b.ts)-new Date(a.ts));
+
+  const typeStyle = { INVESTIGATION_STARTED:'text-brand-400 bg-brand-500/20', INVESTIGATION_COMPLETED:'text-emerald-400 bg-emerald-500/20', REMEDIATION_PLANNED:'text-amber-400 bg-amber-500/20' };
+  return html`<div class="p-6 fade-in">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-base font-bold text-slate-100">Audit Logs</h2>
+      <${Badge} text=${logs.length + ' events'} cls="text-brand-400 bg-brand-500/20 border-brand-500/30"/>
+    </div>
+    ${!logs.length ? html`<${Empty} icon="log" title="No audit events" desc="Events are generated automatically during investigations and approvals."/>` :
+      html`<div class="space-y-2">
+        ${logs.map((log,i) => html`
+          <${Card} key=${i} cls="p-3 flex items-start gap-3">
+            <span class=${'text-xs font-mono px-2 py-0.5 rounded flex-shrink-0 ' + (typeStyle[log.type]||'text-slate-400 bg-slate-800')}>${log.type}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-slate-400 truncate">${log.detail}</p>
+              <p class="text-xs text-slate-600 font-mono mt-0.5">${log.reqId?.slice(0,16)}… · ${new Date(log.ts).toLocaleTimeString()}</p>
+            </div>
+          </${Card}>`)}
+      </div>`}
+  </div>`;
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function Settings({ health, ready, dark, toggleDark }) {
+  const aiReady = ready?.data?.checks?.openai_key_configured;
+  return html`<div class="p-6 max-w-2xl fade-in">
+    <h2 class="text-base font-bold text-slate-100 mb-5">Settings</h2>
+    <div class="space-y-4">
+      <${Card} cls="p-5">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Backend Connection</h3>
+        <div class="space-y-0">
+          ${[
+            { lbl:'API Base URL',   val: BASE, mono:true },
+            { lbl:'Health Status',  val: health?.status==='ok' ? 'Online' : 'Offline', badge: health?.status==='ok' ? confVar('HIGH') : riskVar('HIGH') },
+            { lbl:'OpenAI Key',     val: aiReady ? 'Configured' : 'Not configured — add to .env', badge: aiReady ? confVar('HIGH') : confVar('MEDIUM') },
+            { lbl:'Agent Version',  val: health?.version || '—' },
+            { lbl:'Rate Limiting',  val: '60 req/min per IP' },
+          ].map(item => html`
+            <div key=${item.lbl} class="flex items-center justify-between py-2.5 border-b border-slate-800 last:border-0">
+              <span class="text-xs text-slate-400">${item.lbl}</span>
+              ${item.badge ? html`<${Badge} text=${item.val} cls=${item.badge}/>` :
+                html`<span class=${'text-xs ' + (item.mono ? 'font-mono text-brand-300' : 'text-slate-300')}>${item.val}</span>`}
+            </div>`)}
+        </div>
+      </${Card}>
+
+      <${Card} cls="p-5">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Appearance</h3>
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-300">Dark Mode</div>
+            <div class="text-xs text-slate-500">Optimized for CloudOps / SRE operations</div>
+          </div>
+          <button onClick=${toggleDark} class=${'w-11 h-6 rounded-full transition-colors relative ' + (dark ? 'bg-brand-600' : 'bg-slate-600')}>
+            <div class=${'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 ' + (dark ? 'translate-x-5' : 'translate-x-0')}></div>
+          </button>
+        </div>
+      </${Card}>
+
+      <${Card} cls="p-5">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Security Guarantees</h3>
+        <ul class="space-y-2 text-xs text-slate-400">
+          ${[
+            'OpenAI API key is server-side only — never exposed to browser',
+            'All infrastructure tool calls use shell=False — no command injection',
+            'Prompt injection detection on all requests (12 pattern checks)',
+            'Human approval required before any remediation executes',
+            'Rate limiting: 60 requests/min per IP',
+            'Security headers on all responses (HSTS, X-Frame-Options, etc.)',
+          ].map((s,i) => html`<li key=${i} class="flex items-start gap-2"><${Icon} name="check" cls="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0"/>${s}</li>`)}
+        </ul>
+      </${Card}>
+    </div>
+  </div>`;
+}
+
+// ─── App Root ─────────────────────────────────────────────────────────────────
+function App() {
+  const [page, setPage]       = useState('dashboard');
+  const [col,  setCol]        = useState(false);
+  const [dark, setDark]       = useState(() => { const s = localStorage.getItem('co-theme'); return s ? s==='dark' : true; });
+  const [health, setHealth]   = useState(null);
+  const [ready,  setReady]    = useState(null);
+  const [investigations, setInvestigations] = useState([]);
+  const [selected, setSelected]             = useState(null);
+  const [showResult, setShowResult]         = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    document.body.classList.toggle('bg-slate-950', dark);
+    document.body.classList.toggle('bg-slate-50',  !dark);
+    document.body.classList.toggle('text-slate-100', dark);
+    document.body.classList.toggle('text-slate-900', !dark);
+    localStorage.setItem('co-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try { const [h, r] = await Promise.all([api.health(), api.ready()]); setHealth(h); setReady(r); }
+      catch(e) { setHealth(null); }
+    };
+    fetch_();
+    const t = setInterval(fetch_, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const navigate = (p) => { setPage(p); if (p !== 'troubleshooter') { setShowResult(false); } };
+  const onResult = (res) => { setInvestigations(prev => [...prev, res]); setSelected(res); setShowResult(true); setPage('troubleshooter'); };
+  const onSelect = (inv) => { setSelected(inv); setShowResult(true); setPage('troubleshooter'); };
+
+  const toggleDark = () => setDark(d => !d);
+
+  const renderMain = () => {
+    if (page === 'troubleshooter') {
+      if (showResult && selected) return html`<${InvResult} result=${selected} onNew=${() => { setShowResult(false); setSelected(null); }}/>`;
+      return html`<${Troubleshooter} onResult=${onResult}/>`;
+    }
+    if (page === 'investigations') return html`<${InvList} investigations=${investigations} onSelect=${onSelect}/>`;
+    if (page === 'infrastructure') return html`<${Infrastructure}/>`;
+    if (page === 'incidents')      return html`<${Incidents} investigations=${investigations} setPage=${navigate}/>`;
+    if (page === 'audit')          return html`<${AuditLogs} investigations=${investigations}/>`;
+    if (page === 'settings')       return html`<${Settings} health=${health} ready=${ready} dark=${dark} toggleDark=${toggleDark}/>`;
+    return html`<${Dashboard} health=${health} ready=${ready} investigations=${investigations} setPage=${navigate}/>`;
+  };
+
+  return html`<div class="flex h-screen overflow-hidden ${dark ? 'bg-slate-950' : 'bg-slate-50'}">
+    <${Sidebar} page=${page} setPage=${navigate} dark=${dark} toggleDark=${toggleDark} col=${col} setCol=${setCol}/>
+    <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <${Header} page=${page} health=${health} setPage=${navigate}/>
+      <main class=${'flex-1 overflow-y-auto ' + (dark ? 'bg-slate-950' : 'bg-slate-50')}>
+        ${renderMain()}
+      </main>
+    </div>
+  </div>`;
+}
+
+render(html`<${App}/>`, document.getElementById('root'));
+</script>
+</body>
+</html>

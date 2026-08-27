@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.models import ErrorResponse
 from app.api.routes import router
@@ -57,7 +60,32 @@ app = FastAPI(
 )
 
 app.add_middleware(SecurityMiddleware)
+
+# CORS — allow frontend served from same host or local dev origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "null",  # file:// local open
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=False,
+)
+
 app.include_router(router)
+
+# Serve CloudOps frontend — mounted AFTER API routes so API always wins
+_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.isdir(_frontend_dir):
+    app.mount(
+        "/",
+        StaticFiles(directory=_frontend_dir, html=True),
+        name="cloudops-frontend",
+    )
 
 
 # ---------------------------------------------------------------------------
