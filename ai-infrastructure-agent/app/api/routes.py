@@ -118,6 +118,7 @@ async def troubleshoot(
         final_state = run_investigation(
             user_request=safe_request,
             request_id=request_id,
+            namespace=body.namespace,
         )
 
         root_cause_resp = None
@@ -240,14 +241,42 @@ async def approve(body: ApprovalRequest, request: Request) -> dict:
                 "status": record.status.value.lower(),
             },
         )
-        return {
+        payload: dict = {
             "request_id": body.request_id,
             "approval_id": record.approval_id,
             "status": record.status.value,
             "approved": body.approved,
             "approver": body.approver,
             "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+            "executed": False,
+            "execution": [],
         }
+
+        if body.approved and record.status.value == "APPROVED":
+            plan = service.get_plan(body.request_id)
+            if plan and plan.actions:
+                from app.remediation.executor import RemediationExecutor
+
+                results = RemediationExecutor().execute_plan(
+                    plan.actions,
+                    body.request_id,
+                    record.approval_id,
+                    body.approver,
+                )
+                payload["executed"] = True
+                payload["execution"] = [
+                    r.model_dump(mode="json") for r in results
+                ]
+                logger.info(
+                    "Approved remediation executed",
+                    extra={
+                        "request_id": body.request_id,
+                        "agent_node": "api.approve",
+                        "status": "executed",
+                    },
+                )
+
+        return payload
     except ApprovalError as exc:
         logger.warning(
             f"Approval error: {exc}",

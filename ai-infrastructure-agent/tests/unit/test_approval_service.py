@@ -88,6 +88,15 @@ class TestPendingState:
         record = svc.create_pending(req_id, plan=plan)
         assert len(record.approved_action_ids) == 3
 
+    def test_create_pending_with_plan_is_retrievable(self):
+        svc = _service()
+        req_id = _req_id()
+        plan = _plan(2)
+        svc.create_pending(req_id, plan=plan)
+        stored = svc.get_plan(req_id)
+        assert stored is not None
+        assert len(stored.actions) == 2
+
     def test_create_pending_idempotent_when_still_pending(self):
         svc = _service()
         req_id = _req_id()
@@ -332,10 +341,29 @@ class TestRemediationBlockedWithoutApproval:
 
     def test_approval_gate_pending_stops_workflow(self):
         from app.agent.nodes import approval_gate
-        from app.agent.state import AgentState, ApprovalStatus, InvestigationStatus
+        from app.agent.state import (
+            AgentState,
+            ApprovalStatus,
+            InvestigationStatus,
+            RemediationAction,
+            RemediationPlan,
+            RiskLevel,
+        )
+        plan = RemediationPlan(
+            actions=[
+                RemediationAction(
+                    action="roll back the failing deployment",
+                    reason="test",
+                    expected_result="pod healthy",
+                    risk=RiskLevel.MEDIUM,
+                    rollback="re-apply previous revision",
+                )
+            ]
+        )
         state = AgentState(
             user_request="test",
             approval_status=ApprovalStatus.PENDING,
+            remediation_plan=plan,
         )
         result = approval_gate(state)
         assert result["status"] == InvestigationStatus.AWAITING_APPROVAL
@@ -445,6 +473,60 @@ class TestApprovalAPIEndpoint:
         data = response.json()
         assert data["status"] == "REJECTED"
         assert data["approved"] is False
+
+    def test_approve_without_plan_does_not_execute(self, client):
+        req_id = _req_id()
+        from app.approval.service import ApprovalService
+        ApprovalService.reset_store()
+        response = client.post(
+            "/api/v1/approve",
+            json={
+                "request_id": req_id,
+                "approved": True,
+                "approver": "ops-engineer",
+            },
+        )
+        data = response.json()
+        assert data["status"] == "APPROVED"
+        assert data["executed"] is False
+        assert data["execution"] == []
+
+    def test_approve_with_stored_plan_executes(self, client):
+        from unittest.mock import patch
+
+        from app.agent.state import RemediationResult
+        from app.approval.service import ApprovalService, get_approval_service
+
+        req_id = _req_id()
+        ApprovalService.reset_store()
+        plan = _plan(1)
+        get_approval_service().create_pending(req_id, plan=plan)
+
+        fake = RemediationResult(
+            request_id=req_id,
+            action_id=plan.actions[0].remediation_id,
+            approval_id="approval-1",
+            tool="get_pods",
+            success=True,
+            result="executed",
+        )
+        with patch(
+            "app.remediation.executor.RemediationExecutor.execute_plan",
+            return_value=[fake],
+        ) as mock_exec:
+            response = client.post(
+                "/api/v1/approve",
+                json={
+                    "request_id": req_id,
+                    "approved": True,
+                    "approver": "ops-engineer",
+                },
+            )
+        data = response.json()
+        assert response.status_code == 200
+        assert data["executed"] is True
+        assert len(data["execution"]) == 1
+        mock_exec.assert_called_once()
 
     def test_double_decision_returns_400(self, client):
         req_id = _req_id()

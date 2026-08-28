@@ -448,11 +448,37 @@ class TestRemediationPlanner:
 # ---------------------------------------------------------------------------
 
 class TestApprovalGate:
+    def _plan(self) -> RemediationPlan:
+        return RemediationPlan(
+            actions=[
+                RemediationAction(
+                    action="roll back the failing deployment",
+                    reason="test",
+                    expected_result="pod healthy",
+                    risk=RiskLevel.MEDIUM,
+                    rollback="re-apply the previous revision",
+                    approval_required=True,
+                )
+            ],
+            requires_approval=True,
+        )
+
     def test_pending_pauses_workflow(self):
+        from app.agent.nodes import approval_gate
+        state = _make_state(
+            user_request="test",
+            approval_status=ApprovalStatus.PENDING,
+            remediation_plan=self._plan(),
+        )
+        result = approval_gate(state)
+        assert result["status"] == InvestigationStatus.AWAITING_APPROVAL
+
+    def test_no_plan_skips_approval_wait(self):
         from app.agent.nodes import approval_gate
         state = _make_state(user_request="test", approval_status=ApprovalStatus.PENDING)
         result = approval_gate(state)
-        assert result["status"] == InvestigationStatus.AWAITING_APPROVAL
+        assert result["status"] == InvestigationStatus.ANALYZED
+        assert result["approval_status"] == ApprovalStatus.NOT_REQUIRED
 
     def test_approved_allows_execution(self):
         from app.agent.nodes import approval_gate

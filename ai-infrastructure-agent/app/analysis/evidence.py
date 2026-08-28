@@ -491,6 +491,27 @@ class EvidenceCollector:
                     incident_type_counts.get(signal.incident_type, 0) + 1
                 )
 
+        # If tools ran but no incident signature matched, still surface the output
+        # as flagged inferences so the UI is not empty. These do not raise confidence.
+        if not all_signals:
+            for tool_result in tool_results:
+                if tool_result.status != "success":
+                    continue
+                snippet = (tool_result.stdout or tool_result.stderr or "").strip()
+                if not snippet:
+                    continue
+                evidence.append(EvidenceItem(
+                    source=tool_result.tool_name,
+                    resource=tool_result.resource or tool_result.namespace or "cluster",
+                    observation=(
+                        "No incident signature matched this tool output. "
+                        f"Raw result (truncated): {snippet[:300]}"
+                    ),
+                    confidence=ConfidenceLevel.LOW,
+                    raw_reference=snippet[:200],
+                    is_inference=True,
+                ))
+
         # Phase 3: generate inferences from correlated signals
         inferences = self._generate_inferences(all_signals)
         evidence.extend(inferences)

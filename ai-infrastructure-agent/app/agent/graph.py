@@ -184,9 +184,15 @@ def get_graph():
     return _compiled_graph
 
 
-def run_investigation(user_request: str, request_id: str | None = None) -> AgentState:
+def run_investigation(
+    user_request: str,
+    request_id: str | None = None,
+    namespace: str | None = None,
+) -> AgentState:
     """Run the full investigation workflow for a user request."""
     import uuid
+
+    from app.config import settings
 
     ensure_langchain_debug_attr()
     req_id = request_id or str(uuid.uuid4())
@@ -195,6 +201,7 @@ def run_investigation(user_request: str, request_id: str | None = None) -> Agent
     initial_state = AgentState(
         request_id=req_id,
         user_request=user_request,
+        kubernetes_namespace=namespace or settings.kubernetes_namespace,
     ).model_dump(mode="json")
 
     graph = get_graph()

@@ -173,6 +173,17 @@ class TestFollowUpFromEvidence:
         assert extra == []
 
 
+class TestPlanNamespace:
+    def test_k8s_steps_use_requested_namespace(self):
+        plan = build_investigation_plan(
+            "Why is my pod in CrashLoopBackOff?",
+            namespace="custom-ns",
+        )
+        k8s_steps = [s for s in plan.steps if s.parameters.get("namespace")]
+        assert k8s_steps
+        assert all(s.parameters["namespace"] == "custom-ns" for s in k8s_steps)
+
+
 class TestLlmPlannerSafety:
     def test_llm_suggestions_are_filtered_to_allowlist(self):
         with patch(

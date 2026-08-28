@@ -215,6 +215,7 @@ class AgentState(BaseModel):
     # Identity
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_request: str
+    kubernetes_namespace: Optional[str] = None
 
     # Workflow position
     status: InvestigationStatus = InvestigationStatus.PENDING

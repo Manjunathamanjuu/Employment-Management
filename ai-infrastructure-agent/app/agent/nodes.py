@@ -89,9 +89,10 @@ def investigation_planner(state: AgentState) -> dict[str, Any]:
     log = _make_logger(state, "investigation_planner")
     log.info("Planning investigation", status="started")
 
+    ns = state.kubernetes_namespace or settings.kubernetes_namespace
     plan = build_investigation_plan(
         state.user_request,
-        namespace=settings.kubernetes_namespace,
+        namespace=ns,
     )
 
     log.info(
@@ -490,6 +491,14 @@ def remediation_planner(state: AgentState) -> dict[str, Any]:
         f"Remediation plan: {len(plan.actions)} actions, risk={plan.overall_risk.value}",
         status="completed",
     )
+
+    from app.approval.service import ApprovalError, get_approval_service
+
+    try:
+        get_approval_service().create_pending(state.request_id, plan=plan)
+    except ApprovalError:
+        pass
+
     return {
         "remediation_plan": plan,
         "risk": plan.overall_risk,
@@ -535,6 +544,25 @@ def approval_gate(state: AgentState) -> dict[str, Any]:
         f"Approval gate: status={approval_status.value}",
         status="checking",
     )
+
+    has_actions = bool(
+        state.remediation_plan is not None and state.remediation_plan.actions
+    )
+    if (
+        not has_actions
+        and approval_status not in (ApprovalStatus.APPROVED, ApprovalStatus.REJECTED)
+    ):
+        log.info(
+            "No remediation plan — skipping approval wait",
+            status="no_plan",
+        )
+        return {
+            "status": InvestigationStatus.ANALYZED,
+            "approval_required": False,
+            "approval_status": ApprovalStatus.NOT_REQUIRED,
+            "approval_record": approval_record,
+            "current_step": state.current_step + 1,
+        }
 
     if approval_status == ApprovalStatus.PENDING:
         log.info("Approval pending — workflow paused at approval gate", status="waiting")

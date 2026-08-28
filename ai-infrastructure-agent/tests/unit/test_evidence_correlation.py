@@ -494,6 +494,20 @@ class TestMissingEvidence:
         assert corr.overall_confidence == ConfidenceLevel.INSUFFICIENT
         assert len(corr.evidence) == 0
 
+    def test_unmatched_success_output_is_inference_not_confirmed(self):
+        corr = _collect([
+            _make_result(
+                "get_pods",
+                stdout="NAME READY STATUS\nemployment-management-abc 1/1 Running 0",
+            )
+        ])
+        assert corr.overall_confidence == ConfidenceLevel.INSUFFICIENT
+        confirmed = [e for e in corr.evidence if not e.is_inference]
+        inferences = [e for e in corr.evidence if e.is_inference]
+        assert confirmed == []
+        assert inferences
+        assert "No incident signature" in inferences[0].observation
+
     def test_missing_describe_deployment_when_unavailable(self):
         results = [
             _make_result("get_deployment", stdout="MinimumReplicasUnavailable"),

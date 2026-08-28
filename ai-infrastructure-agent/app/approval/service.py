@@ -28,6 +28,7 @@ logger = get_logger("ai_agent.approval")
 # Thread-safe in-memory approval store
 # In production this would be a durable database
 _approval_store: dict[str, ApprovalRecord] = {}
+_plan_store: dict[str, RemediationPlan] = {}
 _store_lock = threading.Lock()
 
 
@@ -69,6 +70,11 @@ class ApprovalService:
                         f"Approval for request {request_id!r} already decided: "
                         f"{existing.status.value}"
                     )
+                if plan is not None:
+                    _plan_store[request_id] = plan
+                    action_ids = [a.remediation_id for a in plan.actions]
+                    if not existing.approved_action_ids:
+                        existing.approved_action_ids = action_ids
                 return existing  # idempotent if still pending
 
             action_ids = []
@@ -82,6 +88,8 @@ class ApprovalService:
                 approved_action_ids=action_ids,
             )
             _approval_store[request_id] = record
+            if plan is not None:
+                _plan_store[request_id] = plan
 
         logger.info(
             f"Approval record created: PENDING for request={request_id}",
@@ -193,6 +201,11 @@ class ApprovalService:
         with _store_lock:
             return _approval_store.get(request_id)
 
+    def get_plan(self, request_id: str) -> Optional[RemediationPlan]:
+        """Return the stored remediation plan for a request, or None."""
+        with _store_lock:
+            return _plan_store.get(request_id)
+
     def get_status(self, request_id: str) -> ApprovalStatus:
         """Return the current approval status, defaulting to PENDING if not found."""
         with _store_lock:
@@ -209,12 +222,14 @@ class ApprovalService:
         """Remove an approval record. For testing and TTL expiry only."""
         with _store_lock:
             _approval_store.pop(request_id, None)
+            _plan_store.pop(request_id, None)
 
     @classmethod
     def reset_store(cls) -> None:
         """Reset the in-memory store. For testing only."""
         with _store_lock:
             _approval_store.clear()
+            _plan_store.clear()
 
 
 # Module-level singleton
