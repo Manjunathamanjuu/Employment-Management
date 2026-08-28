@@ -4,39 +4,58 @@ metadata:
   name: employment-management
   labels:
     app: employment-management
+
 spec:
   replicas: 2
+
   selector:
     matchLabels:
       app: employment-management
+
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+
   template:
     metadata:
       labels:
         app: employment-management
+
     spec:
+      # Pod-level security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 100
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+
       containers:
         - name: employment-management
+
           image: us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:1.0.0
           imagePullPolicy: IfNotPresent
+
           ports:
             - name: http
               containerPort: 8080
+
+          # Persistent storage mount
+          volumeMounts:
+            - name: application-data
+              mountPath: /app/data
+
+          # Container-level security context
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
+
           resources:
             requests:
               cpu: 250m
@@ -44,6 +63,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+
           startupProbe:
             httpGet:
               path: /api/employees
@@ -51,6 +71,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 12
+
           readinessProbe:
             httpGet:
               path: /api/employees
@@ -58,6 +79,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+
           livenessProbe:
             httpGet:
               path: /api/employees
@@ -65,3 +87,9 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 3
+
+      # PersistentVolumeClaim
+      volumes:
+        - name: application-data
+          persistentVolumeClaim:
+            claimName: employment-management-pvc
