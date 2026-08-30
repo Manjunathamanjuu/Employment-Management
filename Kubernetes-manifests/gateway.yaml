@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: employment-management-gateway
-  namespace: default
+  namespace: stateful-demo
 spec:
   gatewayClassName: gke-l7-global-external-managed
   listeners:
