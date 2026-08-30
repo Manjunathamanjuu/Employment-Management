@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: stateful-demo
+data:
+  POSTGRES_DB: employee-managementdb
+  POSTGRES_USER: postgres
+  POSTGRES_PORT: "5432"

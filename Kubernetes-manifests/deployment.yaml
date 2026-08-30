@@ -1,7 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: employment-management
+  namespace: stateful-demo
   labels:
     app: employment-management
 
@@ -37,16 +39,56 @@ spec:
         - name: employment-management
 
           image: us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:1.0.0
+
           imagePullPolicy: IfNotPresent
 
           ports:
             - name: http
               containerPort: 8080
 
-          # Persistent storage mount
-          volumeMounts:
-            - name: application-data
-              mountPath: /app/data
+          # PostgreSQL configuration from ConfigMap and Secret
+          env:
+
+            # PostgreSQL Service/Host
+            - name: POSTGRES_HOST
+              value: postgres
+
+            # PostgreSQL Database
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_DB
+
+            # PostgreSQL User
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_USER
+
+            # PostgreSQL Port
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_PORT
+
+            # PostgreSQL Password from Secret
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+
+          # ============================================================
+          # Persistent storage mount - COMMENTED FOR NOW
+          # Uncomment this section when employment-management-pvc exists
+          # ============================================================
+
+          # volumeMounts:
+          #   - name: application-data
+          #     mountPath: /app/data
 
           # Container-level security context
           securityContext:
@@ -56,6 +98,7 @@ spec:
               drop:
                 - ALL
 
+          # Resource configuration
           resources:
             requests:
               cpu: 250m
@@ -64,6 +107,7 @@ spec:
               cpu: 500m
               memory: 512Mi
 
+          # Startup probe
           startupProbe:
             httpGet:
               path: /api/employees
@@ -72,6 +116,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 12
 
+          # Readiness probe
           readinessProbe:
             httpGet:
               path: /api/employees
@@ -80,6 +125,7 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
 
+          # Liveness probe
           livenessProbe:
             httpGet:
               path: /api/employees
@@ -88,8 +134,12 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
 
-      # PersistentVolumeClaim
-      volumes:
-        - name: application-data
-          persistentVolumeClaim:
-            claimName: employment-management-pvc
+      # ================================================================
+      # PersistentVolumeClaim - COMMENTED FOR NOW
+      # Uncomment when employment-management-pvc is created
+      # ================================================================
+
+      # volumes:
+      #   - name: application-data
+      #     persistentVolumeClaim:
+      #       claimName: employment-management-pvc

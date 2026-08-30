@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: employment-management-pvc
-  namespace: default
+  namespace: stateful-demo
 spec:
   accessModes:
     - ReadWriteOnce
