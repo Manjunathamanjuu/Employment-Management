@@ -1,10 +1,14 @@
 package com.example.employmentmanagement.service;
 
+import com.example.employmentmanagement.PostgresIntegrationTest;
 import com.example.employmentmanagement.exception.DuplicateEmailException;
 import com.example.employmentmanagement.exception.EmployeeNotFoundException;
 import com.example.employmentmanagement.model.Employee;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 
@@ -12,13 +16,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class EmployeeServiceTest {
+@SpringBootTest
+class EmployeeServiceTest extends PostgresIntegrationTest {
 
+    @Autowired
     private EmployeeService employeeService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
-        employeeService = new EmployeeService();
+        jdbcTemplate.execute("TRUNCATE TABLE employees RESTART IDENTITY");
     }
 
     @Test
@@ -128,6 +137,16 @@ class EmployeeServiceTest {
         Employee updated = employeeService.updateEmployee(created.getId(), sample("First Updated", "first@example.com"));
         assertEquals("First Updated", updated.getName());
         assertEquals("first@example.com", updated.getEmail());
+    }
+
+    @Test
+    void repositoryWritesAreVisibleInPostgreSQL() {
+        employeeService.createEmployee(sample("Persisted", "persisted@example.com"));
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM employees WHERE email = ?",
+                Integer.class,
+                "persisted@example.com");
+        assertEquals(1, count);
     }
 
     private Employee sample(String name, String email) {

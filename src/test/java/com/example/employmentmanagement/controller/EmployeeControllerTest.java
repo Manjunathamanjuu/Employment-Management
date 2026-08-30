@@ -1,6 +1,6 @@
 package com.example.employmentmanagement.controller;
 
-import com.example.employmentmanagement.service.EmployeeService;
+import com.example.employmentmanagement.PostgresIntegrationTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -22,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class EmployeeControllerTest {
+class EmployeeControllerTest extends PostgresIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -31,11 +32,11 @@ class EmployeeControllerTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private EmployeeService employeeService;
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void resetStore() {
-        employeeService.clear();
+        jdbcTemplate.execute("TRUNCATE TABLE employees RESTART IDENTITY");
     }
 
     @Test
@@ -198,6 +199,20 @@ class EmployeeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(10)))
                 .andExpect(jsonPath("$[9].id").value(10));
+    }
+
+    @Test
+    void createdEmployeeIsPersistedInPostgreSQL() throws Exception {
+        mockMvc.perform(post("/api/employees")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("Database Proof", "db.proof@example.com", 7)))
+                .andExpect(status().isCreated());
+
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM employees WHERE email = ?",
+                Integer.class,
+                "db.proof@example.com");
+        org.junit.jupiter.api.Assertions.assertEquals(1, count);
     }
 
     private String employeeJson(String name, String email, int years) throws Exception {
