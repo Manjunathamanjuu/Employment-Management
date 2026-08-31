@@ -217,7 +217,7 @@ Tests use Testcontainers PostgreSQL. They do not depend on a Kubernetes cluster.
 The image contains only the Spring Boot application. It does **not** contain PostgreSQL and does **not** bake `POSTGRES_PASSWORD` into the image.
 
 ```bash
-docker build -t us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:2.0.0 .
+docker build -t us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0 .
 docker images
 ```
 
@@ -232,28 +232,26 @@ docker run --rm -p 8080:8080 \
   -e POSTGRES_DB=employee-managementdb \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
-  us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:2.0.0
+  us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0
 ```
 
 ## Artifact Registry
 
 Image name:
 
-`us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:2.0.0`
-
-Prepare (do not push until explicitly requested):
+`us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0`
 
 ```bash
 gcloud auth login
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
 docker build \
-  -t us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:2.0.0 \
+  -t us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0 \
   .
 
 docker images
 
-docker push us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:2.0.0
+docker push us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0
 ```
 
 Verify in Artifact Registry after an explicit push:
