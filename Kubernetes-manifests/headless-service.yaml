@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: stateful-demo
+  labels:
+    app: postgres
+
+spec:
+  # Headless Service
+  clusterIP: None
+
+  selector:
+    app: postgres
+
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+  # Helps StatefulSet DNS records become available
+  publishNotReadyAddresses: true

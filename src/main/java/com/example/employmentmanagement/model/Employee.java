@@ -1,5 +1,12 @@
 package com.example.employmentmanagement.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -8,16 +15,24 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+@Entity
+@Table(
+        name = "employees",
+        uniqueConstraints = @UniqueConstraint(name = "uk_employees_email", columnNames = "email"))
 public class Employee {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @NotBlank(message = "Name is required")
     @Size(max = 100, message = "Name must be at most 100 characters")
+    @Column(nullable = false, length = 100)
     private String name;
 
     @NotBlank(message = "Occupation is required")
     @Size(max = 100, message = "Occupation must be at most 100 characters")
+    @Column(nullable = false, length = 100)
     private String occupation;
 
     @NotBlank(message = "Email is required")
@@ -26,11 +41,13 @@ public class Employee {
             regexp = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$",
             message = "Email must be a valid email address")
     @Size(max = 255, message = "Email must be at most 255 characters")
+    @Column(nullable = false, length = 255)
     private String email;
 
     @NotNull(message = "Years of experience is required")
     @Min(value = 0, message = "Years of experience cannot be negative")
     @Max(value = 80, message = "Years of experience must be at most 80")
+    @Column(name = "years_of_experience", nullable = false)
     private Integer yearsOfExperience;
 
     public Employee() {
