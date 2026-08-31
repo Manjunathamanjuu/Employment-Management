@@ -12,16 +12,16 @@ public class DatabaseStartupLogger {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseStartupLogger.class);
 
-    @Value("${POSTGRES_HOST}")
+    @Value("${POSTGRES_HOST:postgres}")
     private String host;
 
-    @Value("${POSTGRES_PORT}")
+    @Value("${POSTGRES_PORT:5432}")
     private String port;
 
-    @Value("${POSTGRES_DB}")
+    @Value("${POSTGRES_DB:employee-managementdb}")
     private String database;
 
-    @Value("${POSTGRES_USER}")
+    @Value("${POSTGRES_USER:postgres}")
     private String user;
 
     @EventListener(ApplicationReadyEvent.class)
