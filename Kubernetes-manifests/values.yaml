@@ -1,0 +1,46 @@
+app:
+  replicaCount: 1
+  image:
+    repository: us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management
+    tag: "3.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8180
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgres:
+  replicaCount: 1
+  image:
+    repository: postgres
+    tag: "18"
+    pullPolicy: IfNotPresent
+  dbName: employee-managementdb
+  user: postgres
+  password: postgres
+  port: 5432
+  storage:
+    className: standard-rwo
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+gateway:
+  enabled: true
+  className: gke-l7-global-external-managed
+  ipName: cloudaiops-gateway-ip
+  tlsSecretName: cloudaiops-tls
+  tlsPasswordBase64: cG9zdGdyZXM=
+  hostname: cloudaiops.site
+  createClass: false

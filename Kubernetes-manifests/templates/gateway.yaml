@@ -1,0 +1,30 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ printf "%s-gateway" .Release.Name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "employment-management.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+
+  addresses:
+    - type: NamedAddress
+      value: {{ .Values.gateway.ipName }}
+
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.gateway.tlsSecretName }}
+            kind: Secret
+
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}

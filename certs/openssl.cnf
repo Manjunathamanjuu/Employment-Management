@@ -1,0 +1,23 @@
+[req]
+default_bits = 2048
+prompt = no
+distinguished_name = dn
+x509_extensions = v3_req
+
+[dn]
+C = IN
+ST = Karnataka
+L = Bangalore
+O = CloudAIOps
+OU = Development
+CN = cloudaiops.site
+
+[v3_req]
+subjectAltName = @alt_names
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = cloudaiops.site
+DNS.2 = www.cloudaiops.site

@@ -44,51 +44,41 @@ spec:
 
           ports:
             - name: http
+<<<<<<< HEAD
               containerPort: 8180
+=======
+              containerPort: 8180
+              protocol: TCP
+>>>>>>> upstream/feature/Employment-Management
 
-          # PostgreSQL configuration from ConfigMap and Secret
+          # PostgreSQL configuration
           env:
-
-            # PostgreSQL Service/Host
             - name: POSTGRES_HOST
               value: postgres
 
-            # PostgreSQL Database
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
                   name: postgres-config
                   key: POSTGRES_DB
 
-            # PostgreSQL User
             - name: POSTGRES_USER
               valueFrom:
                 configMapKeyRef:
                   name: postgres-config
                   key: POSTGRES_USER
 
-            # PostgreSQL Port
             - name: POSTGRES_PORT
               valueFrom:
                 configMapKeyRef:
                   name: postgres-config
                   key: POSTGRES_PORT
 
-            # PostgreSQL Password from Secret
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_PASSWORD
-
-          # ============================================================
-          # Persistent storage mount - COMMENTED FOR NOW
-          # Uncomment this section when employment-management-pvc exists
-          # ============================================================
-
-          # volumeMounts:
-          #   - name: application-data
-          #     mountPath: /app/data
 
           # Container-level security context
           securityContext:
@@ -114,6 +104,7 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 3
             failureThreshold: 12
 
           # Readiness probe
@@ -121,6 +112,7 @@ spec:
             httpGet:
               path: /api/employees
               port: http
+            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
@@ -130,16 +122,7 @@ spec:
             httpGet:
               path: /api/employees
               port: http
+            initialDelaySeconds: 30
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 3
-
-      # ================================================================
-      # PersistentVolumeClaim - COMMENTED FOR NOW
-      # Uncomment when employment-management-pvc is created
-      # ================================================================
-
-      # volumes:
-      #   - name: application-data
-      #     persistentVolumeClaim:
-      #       claimName: employment-management-pvc

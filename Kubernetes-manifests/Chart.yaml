@@ -1,0 +1,6 @@
+apiVersion: v2
+name: employment-management
+description: A Helm chart for Employment Management application with PostgreSQL database and GKE Gateway API resources.
+type: application
+version: 0.1.0
+appVersion: "3.0.0"
