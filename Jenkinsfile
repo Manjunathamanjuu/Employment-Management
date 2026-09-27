@@ -15,7 +15,13 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                bat '''
+                    if exist .git rmdir /s /q .git
+                    git init
+                    git remote add origin https://github.com/Manjunathamanjuu/Employment-Management.git
+                    git fetch --depth=1 origin feature/Employment-Management
+                    git checkout -f FETCH_HEAD
+                '''
             }
         }
 
@@ -61,7 +67,3 @@ pipeline {
         }
     }
 }
-
-
-
-
