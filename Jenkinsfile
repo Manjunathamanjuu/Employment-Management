@@ -26,11 +26,12 @@ pipeline {
         }
 
         stage('Test') {
-            steps {
-                bat 'mvn test'
-            }
-        }
+    steps {
+        bat 'java -version'
+        bat 'mvn -version'
+        bat 'mvn test -e'
     }
+}
 
     post {
 
