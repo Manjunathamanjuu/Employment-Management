@@ -19,6 +19,13 @@ pipeline {
             }
         }
 
+        stage('Verify Environment') {
+            steps {
+                bat 'java -version'
+                bat 'mvn -version'
+            }
+        }
+
         stage('Build') {
             steps {
                 bat 'mvn clean package -DskipTests'
@@ -26,12 +33,11 @@ pipeline {
         }
 
         stage('Test') {
-    steps {
-        bat 'java -version'
-        bat 'mvn -version'
-        bat 'mvn test -e'
+            steps {
+                bat 'mvn test -e'
+            }
+        }
     }
-}
 
     post {
 
@@ -48,3 +54,5 @@ pipeline {
         }
     }
 }
+
+
