@@ -37,6 +37,13 @@ pipeline {
                 bat 'mvn test -e'
             }
         }
+
+        stage('Docker Verify') {
+            steps {
+                bat 'docker version'
+                bat 'docker info'
+            }
+        }
     }
 
     post {
@@ -54,5 +61,7 @@ pipeline {
         }
     }
 }
+
+
 
 
