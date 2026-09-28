@@ -21,10 +21,13 @@ stages {
         steps {
             bat '''
                 if exist .git rmdir /s /q .git
+
                 git init
                 git remote add origin https://github.com/Manjunathamanjuu/Employment-Management.git
-                git fetch --depth=1 origin feature/Employment-Management
-                git reset --hard FETCH_HEAD
+
+                git fetch origin feature/Employment-Management
+
+                git checkout -B feature/Employment-Management FETCH_HEAD
             '''
         }
     }
@@ -52,7 +55,6 @@ stages {
     stage('Docker Verify') {
         steps {
             bat 'docker version'
-            bat 'docker info'
         }
     }
 }
@@ -74,5 +76,6 @@ post {
 
 
 }
+
 
 
