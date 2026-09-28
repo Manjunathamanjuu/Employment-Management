@@ -8,6 +8,7 @@ pipeline {
     }
 
     environment {
+
         APP_NAME = 'employment-management'
 
         IMAGE_NAME = 'us-central1-docker.pkg.dev/project-7e1069a7-5b78-49e8-9b8/quickstart-docker-repo/employment-management'
@@ -24,21 +25,33 @@ pipeline {
         // GOOGLE CLOUD SDK
         // ============================================================
         GCLOUD_HOME = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk'
+
         CLOUDSDK_PYTHON = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\bundledpython\\python.exe'
+
+        // Add Google Cloud SDK to PATH
+        PATH = "${env.PATH};C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin"
 
         // ============================================================
         // DOCKER DESKTOP
         // ============================================================
         DOCKER_HOST = 'npipe:////./pipe/docker_engine'
+
+        // ============================================================
+        // GKE AUTH PLUGIN
+        // ============================================================
+        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
     }
 
+
     stages {
+
 
         // ============================================================
         // CHECKOUT
         // ============================================================
         stage('Checkout') {
             steps {
+
                 deleteDir()
 
                 bat '''
@@ -70,6 +83,7 @@ pipeline {
         // ============================================================
         stage('Verify Environment') {
             steps {
+
                 bat '''
                     echo ================================
                     echo VERIFY ENVIRONMENT
@@ -96,13 +110,28 @@ pipeline {
                     if errorlevel 1 exit /b 1
 
                     echo.
+                    echo KUBECTL LOCATION:
+                    where kubectl
+                    if errorlevel 1 exit /b 1
+
+                    echo.
                     echo KUBECTL VERSION:
                     kubectl version --client
                     if errorlevel 1 exit /b 1
 
                     echo.
+                    echo GCLOUD LOCATION:
+                    where gcloud
+                    if errorlevel 1 exit /b 1
+
+                    echo.
                     echo GCLOUD VERSION:
-                    "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
+                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo GKE AUTH PLUGIN:
+                    where gke-gcloud-auth-plugin
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -122,6 +151,7 @@ pipeline {
         // ============================================================
         stage('Build') {
             steps {
+
                 bat '''
                     echo ================================
                     echo MAVEN BUILD
@@ -142,6 +172,7 @@ pipeline {
         // ============================================================
         stage('Test') {
             steps {
+
                 bat '''
                     echo ================================
                     echo RUNNING TESTS
@@ -162,6 +193,7 @@ pipeline {
         // ============================================================
         stage('Docker Verify') {
             steps {
+
                 bat '''
                     echo ================================
                     echo DOCKER VERIFICATION
@@ -208,6 +240,7 @@ pipeline {
         // ============================================================
         stage('Docker Build') {
             steps {
+
                 bat '''
                     echo ================================
                     echo DOCKER BUILD
@@ -239,65 +272,87 @@ pipeline {
         // ============================================================
         stage('Docker Push') {
             steps {
-                bat '''
-                    echo ================================
-                    echo DOCKER PUSH TO GAR
-                    echo ================================
 
-                    echo.
-                    echo DOCKER HOST:
-                    echo %DOCKER_HOST%
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
 
-                    echo.
-                    echo ================================
-                    echo GCLOUD VERSION
-                    echo ================================
+                    bat '''
+                        echo ================================
+                        echo DOCKER PUSH TO GAR
+                        echo ================================
 
-                    "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
-                    if errorlevel 1 exit /b 1
+                        set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
+                        set DOCKER_CONFIG=%TEMP%\\jenkins-docker-%BUILD_NUMBER%
 
+                        if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
+                        if not exist "%DOCKER_CONFIG%" mkdir "%DOCKER_CONFIG%"
 
-                    echo.
-                    echo ================================
-                    echo GOOGLE CLOUD AUTHENTICATION
-                    echo ================================
+                        echo.
+                        echo DOCKER HOST:
+                        echo %DOCKER_HOST%
 
-                    "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo ================================
+                        echo GCLOUD VERSION
+                        echo ================================
 
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo ================================
-                    echo CONFIGURING GAR AUTHENTICATION
-                    echo ================================
+                        echo.
+                        echo ================================
+                        echo AUTHENTICATING JENKINS SERVICE ACCOUNT
+                        echo ================================
 
-                    "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth configure-docker %GCP_REGION%-docker.pkg.dev --quiet
-                    if errorlevel 1 exit /b 1
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account ^
+                            --key-file="%GCP_KEY_FILE%" ^
+                            --project="%GCP_PROJECT%"
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo ACTIVE GOOGLE ACCOUNT
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo PUSHING BUILD IMAGE
-                    echo ================================
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
+                        if errorlevel 1 exit /b 1
 
-                    docker push %IMAGE_NAME%:%IMAGE_TAG%
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo ================================
+                        echo CONFIGURING ARTIFACT REGISTRY
+                        echo ================================
 
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth configure-docker ^
+                            %GCP_REGION%-docker.pkg.dev ^
+                            --quiet
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo ================================
-                    echo PUSHING LATEST IMAGE
-                    echo ================================
+                        echo.
+                        echo ================================
+                        echo PUSHING BUILD IMAGE
+                        echo ================================
 
-                    docker push %IMAGE_NAME%:latest
-                    if errorlevel 1 exit /b 1
+                        docker push %IMAGE_NAME%:%IMAGE_TAG%
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo PUSHING LATEST IMAGE
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo DOCKER PUSH SUCCESSFUL
-                    echo ================================
-                '''
+                        docker push %IMAGE_NAME%:latest
+                        if errorlevel 1 exit /b 1
+
+                        echo.
+                        echo ================================
+                        echo DOCKER PUSH SUCCESSFUL
+                        echo ================================
+                    '''
+                }
             }
         }
 
@@ -307,74 +362,115 @@ pipeline {
         // ============================================================
         stage('Kubernetes Deploy') {
             steps {
-                bat '''
-                    echo ================================
-                    echo GKE AUTHENTICATION
-                    echo ================================
 
-                    "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT%
-                    if errorlevel 1 exit /b 1
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
 
+                    bat '''
+                        echo ================================
+                        echo GKE AUTHENTICATION
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo KUBERNETES CLUSTER
-                    echo ================================
+                        set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%
 
-                    kubectl get nodes
-                    if errorlevel 1 exit /b 1
+                        if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
 
+                        echo.
+                        echo ================================
+                        echo AUTHENTICATING JENKINS SERVICE ACCOUNT
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo APPLYING NAMESPACE
-                    echo ================================
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account ^
+                            --key-file="%GCP_KEY_FILE%" ^
+                            --project="%GCP_PROJECT%"
+                        if errorlevel 1 exit /b 1
 
-                    kubectl apply -f Kubernetes-manifests/namespace.yaml
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo ================================
+                        echo ACTIVE GOOGLE ACCOUNT
+                        echo ================================
 
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo ================================
-                    echo APPLYING POSTGRES CONFIGMAP
-                    echo ================================
+                        echo.
+                        echo ================================
+                        echo GCP PROJECT
+                        echo ================================
 
-                    kubectl apply -f Kubernetes-manifests/postgres-configmap.yaml
-                    if errorlevel 1 exit /b 1
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" config get-value project
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo GETTING GKE CREDENTIALS
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo APPLYING POSTGRES SECRET
-                    echo ================================
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials ^
+                            %GKE_CLUSTER% ^
+                            --region %GCP_REGION% ^
+                            --project %GCP_PROJECT%
+                        if errorlevel 1 exit /b 1
 
-                    kubectl apply -f Kubernetes-manifests/postgres-secret.yaml
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo ================================
+                        echo KUBERNETES CLUSTER
+                        echo ================================
 
+                        kubectl get nodes
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo ================================
-                    echo APPLYING SERVICE
-                    echo ================================
+                        echo.
+                        echo ================================
+                        echo APPLYING NAMESPACE
+                        echo ================================
 
-                    kubectl apply -f Kubernetes-manifests/service.yaml
-                    if errorlevel 1 exit /b 1
+                        kubectl apply -f Kubernetes-manifests/namespace.yaml
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo APPLYING POSTGRES CONFIGMAP
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo APPLYING DEPLOYMENT
-                    echo ================================
+                        kubectl apply -f Kubernetes-manifests/postgres-configmap.yaml
+                        if errorlevel 1 exit /b 1
 
-                    kubectl apply -f Kubernetes-manifests/deployment.yaml
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo ================================
+                        echo APPLYING POSTGRES SECRET
+                        echo ================================
 
+                        kubectl apply -f Kubernetes-manifests/postgres-secret.yaml
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo ================================
-                    echo KUBERNETES DEPLOYMENT APPLIED
-                    echo ================================
-                '''
+                        echo.
+                        echo ================================
+                        echo APPLYING SERVICE
+                        echo ================================
+
+                        kubectl apply -f Kubernetes-manifests/service.yaml
+                        if errorlevel 1 exit /b 1
+
+                        echo.
+                        echo ================================
+                        echo APPLYING DEPLOYMENT
+                        echo ================================
+
+                        kubectl apply -f Kubernetes-manifests/deployment.yaml
+                        if errorlevel 1 exit /b 1
+
+                        echo.
+                        echo ================================
+                        echo KUBERNETES DEPLOYMENT APPLIED
+                        echo ================================
+                    '''
+                }
             }
         }
 
@@ -384,6 +480,7 @@ pipeline {
         // ============================================================
         stage('Verify Deployment') {
             steps {
+
                 bat '''
                     echo ================================
                     echo VERIFY KUBERNETES DEPLOYMENT
@@ -394,27 +491,25 @@ pipeline {
                     kubectl get pods -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
 
-
                     echo.
                     echo SERVICES:
                     kubectl get svc -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
-
 
                     echo.
                     echo DEPLOYMENT:
                     kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
 
-
                     echo.
                     echo ================================
                     echo ROLLOUT STATUS
                     echo ================================
 
-                    kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
+                    kubectl rollout status deployment/%K8S_DEPLOYMENT% ^
+                        -n %K8S_NAMESPACE% ^
+                        --timeout=180s
                     if errorlevel 1 exit /b 1
-
 
                     echo.
                     echo ================================
@@ -450,3 +545,4 @@ pipeline {
         }
     }
 }
+
