@@ -25,7 +25,10 @@ pipeline {
 
         GCP_PROJECT = 'project-7e1069a7-5b78-49e8-9b8'
         GCP_REGION = 'us-central1'
+
+        // GKE cluster details
         GKE_CLUSTER = 'employee-managment-cluster-1'
+        GKE_LOCATION = 'us-central1'
 
         K8S_NAMESPACE = 'stateful-demo'
         K8S_DEPLOYMENT = 'employment-management'
@@ -443,8 +446,7 @@ pipeline {
 
                         set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
-                        rem Use workspace-local config files to avoid
-                        rem Windows TEMP permission problems.
+                        rem Use workspace-local config files.
                         set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
                         set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
@@ -463,6 +465,20 @@ pipeline {
                         echo ================================
 
                         echo %KUBECONFIG%
+
+                        echo.
+                        echo ================================
+                        echo GKE CLUSTER
+                        echo ================================
+
+                        echo %GKE_CLUSTER%
+
+                        echo.
+                        echo ================================
+                        echo GKE LOCATION
+                        echo ================================
+
+                        echo %GKE_LOCATION%
 
                         echo.
                         echo ================================
@@ -504,7 +520,7 @@ pipeline {
                         echo GETTING GKE CREDENTIALS
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT% --verbosity=info
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --location %GKE_LOCATION% --project %GCP_PROJECT% --verbosity=info
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -619,6 +635,11 @@ pipeline {
                         echo.
                         echo KUBECONFIG:
                         echo %KUBECONFIG%
+
+                        if not exist "%KUBECONFIG%" (
+                            echo ERROR: Kubeconfig file does not exist.
+                            exit /b 1
+                        )
 
                         echo.
                         echo PODS:
