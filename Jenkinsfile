@@ -1,3 +1,4 @@
+```groovy
 pipeline {
 
     agent any
@@ -5,6 +6,10 @@ pipeline {
     tools {
         jdk 'JDK-17'
         maven 'Maven-3.9.16'
+    }
+
+    environment {
+        DOCKER_HOST = 'npipe:////./pipe/docker_engine'
     }
 
     options {
@@ -29,6 +34,7 @@ pipeline {
             steps {
                 bat 'java -version'
                 bat 'mvn -version'
+                bat 'docker version'
             }
         }
 
@@ -67,3 +73,4 @@ pipeline {
         }
     }
 }
+```
