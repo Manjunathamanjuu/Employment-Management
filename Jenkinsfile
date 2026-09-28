@@ -11,12 +11,8 @@ pipeline {
     // GLOBAL OPTIONS
     // ============================================================
     options {
-        // Never let a hung build run for hours
         timeout(time: 60, unit: 'MINUTES')
-
-        // Prevents parallel builds (the "@2" workspace) fighting over Docker/ports
         disableConcurrentBuilds()
-
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
@@ -52,7 +48,6 @@ pipeline {
         USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
     }
 
-
     stages {
 
         // ============================================================
@@ -86,7 +81,6 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // VERIFY ENVIRONMENT
         // ============================================================
@@ -97,6 +91,8 @@ pipeline {
                     echo ================================
                     echo VERIFY ENVIRONMENT
                     echo ================================
+
+                    set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
                     echo.
                     echo JAVA VERSION:
@@ -140,7 +136,12 @@ pipeline {
 
                     echo.
                     echo GKE AUTH PLUGIN:
-                    where gke-gcloud-auth-plugin
+                    where gke-gcloud-auth-plugin.exe
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo GKE AUTH PLUGIN VERSION:
+                    "%GCLOUD_HOME%\\bin\\gke-gcloud-auth-plugin.exe" --version
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -154,7 +155,6 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // BUILD
         // ============================================================
@@ -164,7 +164,6 @@ pipeline {
             }
             steps {
 
-                // -B = batch mode, -ntp = no download progress spam in the log
                 bat '''
                     echo ================================
                     echo MAVEN BUILD
@@ -179,21 +178,18 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // TEST
         // ============================================================
         stage('Test') {
             options {
-                // Normal run is ~40s. If it hangs, stop after 10 minutes.
                 timeout(time: 10, unit: 'MINUTES')
             }
+
             environment {
-                // Ryuk can keep the mvn process from exiting under the Jenkins
-                // service on Windows. Disabled here; containers are removed in
-                // the post block below instead.
                 TESTCONTAINERS_RYUK_DISABLED = 'true'
             }
+
             steps {
 
                 bat '''
@@ -208,18 +204,19 @@ pipeline {
                     echo Tests completed successfully.
                 '''
             }
+
             post {
                 always {
-                    // Remove leftover Testcontainers containers (Ryuk is disabled)
                     bat '''
                         echo CLEANING UP TESTCONTAINERS CONTAINERS
+
                         for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
+
                         exit /b 0
                     '''
                 }
             }
         }
-
 
         // ============================================================
         // DOCKER VERIFY
@@ -228,6 +225,7 @@ pipeline {
             options {
                 timeout(time: 5, unit: 'MINUTES')
             }
+
             steps {
 
                 bat '''
@@ -270,7 +268,6 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // DOCKER BUILD
         // ============================================================
@@ -278,6 +275,7 @@ pipeline {
             options {
                 timeout(time: 20, unit: 'MINUTES')
             }
+
             steps {
 
                 bat '''
@@ -305,15 +303,14 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // DOCKER PUSH
         // ============================================================
         stage('Docker Push') {
             options {
-                // Push normally takes under a minute. Fail fast instead of hanging.
                 timeout(time: 15, unit: 'MINUTES')
             }
+
             steps {
 
                 withCredentials([
@@ -328,12 +325,14 @@ pipeline {
                         echo DOCKER PUSH TO GAR
                         echo ================================
 
-                        set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
-                        set DOCKER_CONFIG=%TEMP%\\jenkins-docker-%BUILD_NUMBER%
-                        set ACCESS_TOKEN_FILE=%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set DOCKER_CONFIG=%WORKSPACE%\\.docker-%BUILD_NUMBER%
+                        set ACCESS_TOKEN_FILE=%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt
 
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
                         if not exist "%DOCKER_CONFIG%" mkdir "%DOCKER_CONFIG%"
+
+                        set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
                         echo.
                         echo ================================
@@ -341,7 +340,6 @@ pipeline {
                         echo ================================
 
                         echo %DOCKER_HOST%
-
 
                         echo.
                         echo ================================
@@ -351,7 +349,6 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo AUTHENTICATING JENKINS SERVICE ACCOUNT
@@ -359,7 +356,6 @@ pipeline {
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -369,15 +365,16 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo GENERATING SHORT-LIVED ACCESS TOKEN
                         echo ================================
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth print-access-token > "%ACCESS_TOKEN_FILE%"
-                        if errorlevel 1 exit /b 1
-
+                        if errorlevel 1 (
+                            if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
+                            exit /b 1
+                        )
 
                         echo.
                         echo ================================
@@ -386,18 +383,16 @@ pipeline {
 
                         docker login %GCP_REGION%-docker.pkg.dev -u oauth2accesstoken --password-stdin < "%ACCESS_TOKEN_FILE%"
                         if errorlevel 1 (
-                            del /q "%ACCESS_TOKEN_FILE%"
+                            if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
                             exit /b 1
                         )
-
 
                         echo.
                         echo ================================
                         echo REMOVING ACCESS TOKEN FILE
                         echo ================================
 
-                        del /q "%ACCESS_TOKEN_FILE%"
-
+                        if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
 
                         echo.
                         echo ================================
@@ -407,7 +402,6 @@ pipeline {
                         docker push %IMAGE_NAME%:%IMAGE_TAG%
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo PUSHING LATEST IMAGE
@@ -415,7 +409,6 @@ pipeline {
 
                         docker push %IMAGE_NAME%:latest
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -426,7 +419,6 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // KUBERNETES DEPLOY
         // ============================================================
@@ -434,6 +426,7 @@ pipeline {
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
+
             steps {
 
                 withCredentials([
@@ -448,11 +441,39 @@ pipeline {
                         echo GKE AUTHENTICATION
                         echo ================================
 
-                        set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
-                        set KUBECONFIG=%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%
+                        set PATH=%GCLOUD_HOME%\\bin;%PATH%
+
+                        rem Use workspace-local config files to avoid
+                        rem Windows TEMP permission problems.
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
 
+                        echo.
+                        echo ================================
+                        echo CLOUDSDK CONFIG
+                        echo ================================
+
+                        echo %CLOUDSDK_CONFIG%
+
+                        echo.
+                        echo ================================
+                        echo KUBECONFIG
+                        echo ================================
+
+                        echo %KUBECONFIG%
+
+                        echo.
+                        echo ================================
+                        echo GKE AUTH PLUGIN
+                        echo ================================
+
+                        where gke-gcloud-auth-plugin.exe
+                        if errorlevel 1 exit /b 1
+
+                        "%GCLOUD_HOME%\\bin\\gke-gcloud-auth-plugin.exe" --version
+                        if errorlevel 1 exit /b 1
 
                         echo.
                         echo ================================
@@ -462,7 +483,6 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo ACTIVE GOOGLE ACCOUNT
@@ -470,7 +490,6 @@ pipeline {
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -480,15 +499,25 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" config get-value project
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo GETTING GKE CREDENTIALS
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT%
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT% --verbosity=info
                         if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo KUBECONFIG CREATED
+                        echo ================================
+
+                        if not exist "%KUBECONFIG%" (
+                            echo ERROR: Kubeconfig file was not created.
+                            exit /b 1
+                        )
+
+                        echo Kubeconfig file created successfully.
 
                         echo.
                         echo ================================
@@ -498,7 +527,6 @@ pipeline {
                         kubectl get nodes
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo APPLYING NAMESPACE
@@ -506,7 +534,6 @@ pipeline {
 
                         kubectl apply -f Kubernetes-manifests/namespace.yaml
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -516,7 +543,6 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/postgres-configmap.yaml
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo APPLYING POSTGRES SECRET
@@ -524,7 +550,6 @@ pipeline {
 
                         kubectl apply -f Kubernetes-manifests/postgres-secret.yaml
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -534,7 +559,6 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/service.yaml
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo APPLYING DEPLOYMENT
@@ -543,7 +567,6 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/deployment.yaml
                         if errorlevel 1 exit /b 1
 
-
                         echo.
                         echo ================================
                         echo UPDATING DEPLOYMENT IMAGE TO BUILD %IMAGE_TAG%
@@ -551,7 +574,6 @@ pipeline {
 
                         kubectl set image deployment/%K8S_DEPLOYMENT% %K8S_DEPLOYMENT%=%IMAGE_NAME%:%IMAGE_TAG% -n %K8S_NAMESPACE%
                         if errorlevel 1 exit /b 1
-
 
                         echo.
                         echo ================================
@@ -562,7 +584,6 @@ pipeline {
             }
         }
 
-
         // ============================================================
         // VERIFY DEPLOYMENT
         // ============================================================
@@ -570,59 +591,67 @@ pipeline {
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
+
             steps {
 
-                bat '''
-                    echo ================================
-                    echo VERIFY KUBERNETES DEPLOYMENT
-                    echo ================================
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
 
-                    rem Same paths as the Kubernetes Deploy stage. CLOUDSDK_CONFIG is needed
-                    rem so gke-gcloud-auth-plugin can find the service account login.
-                    set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
-                    set KUBECONFIG=%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%
+                    bat '''
+                        echo ================================
+                        echo VERIFY KUBERNETES DEPLOYMENT
+                        echo ================================
 
-                    echo.
-                    echo KUBECONFIG:
-                    echo %KUBECONFIG%
+                        set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
+                        rem Reuse the same workspace-local configuration.
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
-                    echo.
-                    echo PODS:
-                    kubectl get pods -n %K8S_NAMESPACE%
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo CLOUDSDK CONFIG:
+                        echo %CLOUDSDK_CONFIG%
 
+                        echo.
+                        echo KUBECONFIG:
+                        echo %KUBECONFIG%
 
-                    echo.
-                    echo SERVICES:
-                    kubectl get svc -n %K8S_NAMESPACE%
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo PODS:
+                        kubectl get pods -n %K8S_NAMESPACE%
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo SERVICES:
+                        kubectl get svc -n %K8S_NAMESPACE%
+                        if errorlevel 1 exit /b 1
 
-                    echo.
-                    echo DEPLOYMENT:
-                    kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
-                    if errorlevel 1 exit /b 1
+                        echo.
+                        echo DEPLOYMENT:
+                        kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
+                        if errorlevel 1 exit /b 1
 
+                        echo.
+                        echo ================================
+                        echo ROLLOUT STATUS
+                        echo ================================
 
-                    echo.
-                    echo ================================
-                    echo ROLLOUT STATUS
-                    echo ================================
+                        kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
+                        if errorlevel 1 exit /b 1
 
-                    kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo ================================
-                    echo KUBERNETES DEPLOYMENT VERIFIED
-                    echo ================================
-                '''
+                        echo.
+                        echo ================================
+                        echo KUBERNETES DEPLOYMENT VERIFIED
+                        echo ================================
+                    '''
+                }
             }
         }
     }
-
 
     // ================================================================
     // POST ACTIONS
@@ -646,16 +675,24 @@ pipeline {
         always {
             echo 'Pipeline execution completed.'
 
-            // Remove temporary credentials/config created during this build
             bat '''
-                set DOCKER_CONFIG=%TEMP%\\jenkins-docker-%BUILD_NUMBER%
+                echo.
+                echo ================================
+                echo CLEANING JENKINS TEMP CONFIG
+                echo ================================
+
+                set DOCKER_CONFIG=%WORKSPACE%\\.docker-%BUILD_NUMBER%
+
                 docker logout %GCP_REGION%-docker.pkg.dev
-                if exist "%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%" rmdir /s /q "%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%"
-                if exist "%TEMP%\\jenkins-docker-%BUILD_NUMBER%" rmdir /s /q "%TEMP%\\jenkins-docker-%BUILD_NUMBER%"
-                if exist "%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%" del /q "%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%"
-                if exist "%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt" del /q "%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt"
+
+                if exist "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%"
+                if exist "%WORKSPACE%\\.docker-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.docker-%BUILD_NUMBER%"
+                if exist "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%" del /q "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%"
+                if exist "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt" del /q "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt"
+
                 exit /b 0
             '''
         }
     }
 }
+
