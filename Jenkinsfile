@@ -20,9 +20,16 @@ pipeline {
         K8S_NAMESPACE = 'stateful-demo'
         K8S_DEPLOYMENT = 'employment-management'
 
-        // Google Cloud SDK
+        // ============================================================
+        // GOOGLE CLOUD SDK
+        // ============================================================
         GCLOUD_HOME = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk'
         CLOUDSDK_PYTHON = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\bundledpython\\python.exe'
+
+        // ============================================================
+        // DOCKER DESKTOP
+        // ============================================================
+        DOCKER_HOST = 'npipe:////./pipe/docker_engine'
     }
 
     stages {
@@ -76,6 +83,11 @@ pipeline {
                     echo.
                     echo MAVEN VERSION:
                     mvn -version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER LOCATION:
+                    where docker
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -155,6 +167,32 @@ pipeline {
                     echo DOCKER VERIFICATION
                     echo ================================
 
+                    echo.
+                    echo DOCKER HOST:
+                    echo %DOCKER_HOST%
+
+                    echo.
+                    echo DOCKER LOCATION:
+                    where docker
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER VERSION:
+                    docker --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER CONTEXT:
+                    docker context show
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER SERVER:
+                    docker version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER INFO:
                     docker info
                     if errorlevel 1 exit /b 1
 
@@ -174,6 +212,10 @@ pipeline {
                     echo ================================
                     echo DOCKER BUILD
                     echo ================================
+
+                    echo.
+                    echo DOCKER HOST:
+                    echo %DOCKER_HOST%
 
                     docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
                     if errorlevel 1 exit /b 1
@@ -201,6 +243,10 @@ pipeline {
                     echo ================================
                     echo DOCKER PUSH TO GAR
                     echo ================================
+
+                    echo.
+                    echo DOCKER HOST:
+                    echo %DOCKER_HOST%
 
                     echo.
                     echo ================================
@@ -404,4 +450,3 @@ pipeline {
         }
     }
 }
-
