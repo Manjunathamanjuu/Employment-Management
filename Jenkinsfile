@@ -7,6 +7,19 @@ pipeline {
         maven 'Maven-3.9.16'
     }
 
+    // ============================================================
+    // GLOBAL OPTIONS
+    // ============================================================
+    options {
+        // Never let a hung build run for hours
+        timeout(time: 60, unit: 'MINUTES')
+
+        // Prevents parallel builds (the "@2" workspace) fighting over Docker/ports
+        disableConcurrentBuilds()
+
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
     environment {
 
         APP_NAME = 'employment-management'
@@ -146,14 +159,18 @@ pipeline {
         // BUILD
         // ============================================================
         stage('Build') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             steps {
 
+                // -B = batch mode, -ntp = no download progress spam in the log
                 bat '''
                     echo ================================
                     echo MAVEN BUILD
                     echo ================================
 
-                    mvn clean package -DskipTests
+                    mvn -B -ntp clean package -DskipTests
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -167,6 +184,16 @@ pipeline {
         // TEST
         // ============================================================
         stage('Test') {
+            options {
+                // Normal run is ~40s. If it hangs, stop after 10 minutes.
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            environment {
+                // Ryuk can keep the mvn process from exiting under the Jenkins
+                // service on Windows. Disabled here; containers are removed in
+                // the post block below instead.
+                TESTCONTAINERS_RYUK_DISABLED = 'true'
+            }
             steps {
 
                 bat '''
@@ -174,12 +201,22 @@ pipeline {
                     echo RUNNING TESTS
                     echo ================================
 
-                    mvn test
+                    mvn -B -ntp test
                     if errorlevel 1 exit /b 1
 
                     echo.
                     echo Tests completed successfully.
                 '''
+            }
+            post {
+                always {
+                    // Remove leftover Testcontainers containers (Ryuk is disabled)
+                    bat '''
+                        echo CLEANING UP TESTCONTAINERS CONTAINERS
+                        for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
+                        exit /b 0
+                    '''
+                }
             }
         }
 
@@ -188,6 +225,9 @@ pipeline {
         // DOCKER VERIFY
         // ============================================================
         stage('Docker Verify') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
             steps {
 
                 bat '''
@@ -235,6 +275,9 @@ pipeline {
         // DOCKER BUILD
         // ============================================================
         stage('Docker Build') {
+            options {
+                timeout(time: 20, unit: 'MINUTES')
+            }
             steps {
 
                 bat '''
@@ -267,6 +310,10 @@ pipeline {
         // DOCKER PUSH
         // ============================================================
         stage('Docker Push') {
+            options {
+                // Push normally takes under a minute. Fail fast instead of hanging.
+                timeout(time: 15, unit: 'MINUTES')
+            }
             steps {
 
                 withCredentials([
@@ -338,7 +385,10 @@ pipeline {
                         echo ================================
 
                         docker login %GCP_REGION%-docker.pkg.dev -u oauth2accesstoken --password-stdin < "%ACCESS_TOKEN_FILE%"
-                        if errorlevel 1 exit /b 1
+                        if errorlevel 1 (
+                            del /q "%ACCESS_TOKEN_FILE%"
+                            exit /b 1
+                        )
 
 
                         echo.
@@ -381,6 +431,9 @@ pipeline {
         // KUBERNETES DEPLOY
         // ============================================================
         stage('Kubernetes Deploy') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             steps {
 
                 withCredentials([
@@ -493,6 +546,15 @@ pipeline {
 
                         echo.
                         echo ================================
+                        echo UPDATING DEPLOYMENT IMAGE TO BUILD %IMAGE_TAG%
+                        echo ================================
+
+                        kubectl set image deployment/%K8S_DEPLOYMENT% %K8S_DEPLOYMENT%=%IMAGE_NAME%:%IMAGE_TAG% -n %K8S_NAMESPACE%
+                        if errorlevel 1 exit /b 1
+
+
+                        echo.
+                        echo ================================
                         echo KUBERNETES DEPLOYMENT APPLIED
                         echo ================================
                     '''
@@ -505,6 +567,9 @@ pipeline {
         // VERIFY DEPLOYMENT
         // ============================================================
         stage('Verify Deployment') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             steps {
 
                 bat '''
@@ -512,6 +577,9 @@ pipeline {
                     echo VERIFY KUBERNETES DEPLOYMENT
                     echo ================================
 
+                    rem Same paths as the Kubernetes Deploy stage. CLOUDSDK_CONFIG is needed
+                    rem so gke-gcloud-auth-plugin can find the service account login.
+                    set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
                     set KUBECONFIG=%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%
 
                     echo.
@@ -565,7 +633,7 @@ pipeline {
             echo '================================'
             echo 'CI/CD PIPELINE SUCCESSFUL'
             echo '================================'
-            echo 'Build → Test → Docker Build → Docker Push → Kubernetes Deploy → Verify'
+            echo 'Build -> Test -> Docker Build -> Docker Push -> Kubernetes Deploy -> Verify'
         }
 
         failure {
@@ -577,7 +645,17 @@ pipeline {
 
         always {
             echo 'Pipeline execution completed.'
+
+            // Remove temporary credentials/config created during this build
+            bat '''
+                set DOCKER_CONFIG=%TEMP%\\jenkins-docker-%BUILD_NUMBER%
+                docker logout %GCP_REGION%-docker.pkg.dev
+                if exist "%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%" rmdir /s /q "%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%"
+                if exist "%TEMP%\\jenkins-docker-%BUILD_NUMBER%" rmdir /s /q "%TEMP%\\jenkins-docker-%BUILD_NUMBER%"
+                if exist "%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%" del /q "%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%"
+                if exist "%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt" del /q "%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt"
+                exit /b 0
+            '''
         }
     }
 }
-
