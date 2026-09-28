@@ -28,9 +28,6 @@ pipeline {
 
         CLOUDSDK_PYTHON = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\bundledpython\\python.exe'
 
-        // Add Google Cloud SDK to PATH
-        PATH = "${env.PATH};C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin"
-
         // ============================================================
         // DOCKER DESKTOP
         // ============================================================
@@ -44,7 +41,6 @@ pipeline {
 
 
     stages {
-
 
         // ============================================================
         // CHECKOUT
@@ -308,9 +304,7 @@ pipeline {
                         echo AUTHENTICATING JENKINS SERVICE ACCOUNT
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account ^
-                            --key-file="%GCP_KEY_FILE%" ^
-                            --project="%GCP_PROJECT%"
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -326,9 +320,7 @@ pipeline {
                         echo CONFIGURING ARTIFACT REGISTRY
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth configure-docker ^
-                            %GCP_REGION%-docker.pkg.dev ^
-                            --quiet
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth configure-docker %GCP_REGION%-docker.pkg.dev --quiet
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -385,9 +377,7 @@ pipeline {
                         echo AUTHENTICATING JENKINS SERVICE ACCOUNT
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account ^
-                            --key-file="%GCP_KEY_FILE%" ^
-                            --project="%GCP_PROJECT%"
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -411,10 +401,7 @@ pipeline {
                         echo GETTING GKE CREDENTIALS
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials ^
-                            %GKE_CLUSTER% ^
-                            --region %GCP_REGION% ^
-                            --project %GCP_PROJECT%
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT%
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -486,6 +473,12 @@ pipeline {
                     echo VERIFY KUBERNETES DEPLOYMENT
                     echo ================================
 
+                    set KUBECONFIG=%TEMP%\\jenkins-kubeconfig-%BUILD_NUMBER%
+
+                    echo.
+                    echo KUBECONFIG:
+                    echo %KUBECONFIG%
+
                     echo.
                     echo PODS:
                     kubectl get pods -n %K8S_NAMESPACE%
@@ -506,9 +499,7 @@ pipeline {
                     echo ROLLOUT STATUS
                     echo ================================
 
-                    kubectl rollout status deployment/%K8S_DEPLOYMENT% ^
-                        -n %K8S_NAMESPACE% ^
-                        --timeout=180s
+                    kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
                     if errorlevel 1 exit /b 1
 
                     echo.
