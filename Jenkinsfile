@@ -283,13 +283,18 @@ pipeline {
 
                         set CLOUDSDK_CONFIG=%TEMP%\\jenkins-gcloud-%BUILD_NUMBER%
                         set DOCKER_CONFIG=%TEMP%\\jenkins-docker-%BUILD_NUMBER%
+                        set ACCESS_TOKEN_FILE=%TEMP%\\jenkins-gcp-token-%BUILD_NUMBER%.txt
 
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
                         if not exist "%DOCKER_CONFIG%" mkdir "%DOCKER_CONFIG%"
 
                         echo.
-                        echo DOCKER HOST:
+                        echo ================================
+                        echo DOCKER HOST
+                        echo ================================
+
                         echo %DOCKER_HOST%
+
 
                         echo.
                         echo ================================
@@ -299,6 +304,7 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo AUTHENTICATING JENKINS SERVICE ACCOUNT
@@ -306,6 +312,7 @@ pipeline {
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -315,13 +322,32 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
-                        echo CONFIGURING ARTIFACT REGISTRY
+                        echo GENERATING SHORT-LIVED ACCESS TOKEN
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth configure-docker %GCP_REGION%-docker.pkg.dev --quiet
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth print-access-token > "%ACCESS_TOKEN_FILE%"
                         if errorlevel 1 exit /b 1
+
+
+                        echo.
+                        echo ================================
+                        echo DOCKER LOGIN TO ARTIFACT REGISTRY
+                        echo ================================
+
+                        docker login %GCP_REGION%-docker.pkg.dev -u oauth2accesstoken --password-stdin < "%ACCESS_TOKEN_FILE%"
+                        if errorlevel 1 exit /b 1
+
+
+                        echo.
+                        echo ================================
+                        echo REMOVING ACCESS TOKEN FILE
+                        echo ================================
+
+                        del /q "%ACCESS_TOKEN_FILE%"
+
 
                         echo.
                         echo ================================
@@ -331,6 +357,7 @@ pipeline {
                         docker push %IMAGE_NAME%:%IMAGE_TAG%
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo PUSHING LATEST IMAGE
@@ -338,6 +365,7 @@ pipeline {
 
                         docker push %IMAGE_NAME%:latest
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -372,6 +400,7 @@ pipeline {
 
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
 
+
                         echo.
                         echo ================================
                         echo AUTHENTICATING JENKINS SERVICE ACCOUNT
@@ -379,6 +408,7 @@ pipeline {
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -388,6 +418,7 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo GCP PROJECT
@@ -395,6 +426,7 @@ pipeline {
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" config get-value project
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -404,6 +436,7 @@ pipeline {
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --region %GCP_REGION% --project %GCP_PROJECT%
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo KUBERNETES CLUSTER
@@ -411,6 +444,7 @@ pipeline {
 
                         kubectl get nodes
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -420,6 +454,7 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/namespace.yaml
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo APPLYING POSTGRES CONFIGMAP
@@ -427,6 +462,7 @@ pipeline {
 
                         kubectl apply -f Kubernetes-manifests/postgres-configmap.yaml
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -436,6 +472,7 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/postgres-secret.yaml
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo APPLYING SERVICE
@@ -444,6 +481,7 @@ pipeline {
                         kubectl apply -f Kubernetes-manifests/service.yaml
                         if errorlevel 1 exit /b 1
 
+
                         echo.
                         echo ================================
                         echo APPLYING DEPLOYMENT
@@ -451,6 +489,7 @@ pipeline {
 
                         kubectl apply -f Kubernetes-manifests/deployment.yaml
                         if errorlevel 1 exit /b 1
+
 
                         echo.
                         echo ================================
@@ -479,20 +518,24 @@ pipeline {
                     echo KUBECONFIG:
                     echo %KUBECONFIG%
 
+
                     echo.
                     echo PODS:
                     kubectl get pods -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo SERVICES:
                     kubectl get svc -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
 
+
                     echo.
                     echo DEPLOYMENT:
                     kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo ================================
@@ -501,6 +544,7 @@ pipeline {
 
                     kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo ================================
