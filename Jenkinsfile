@@ -13,6 +13,7 @@ pipeline {
     options {
         timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
@@ -81,7 +82,7 @@ pipeline {
                     git remote add origin https://github.com/Manjunathamanjuu/Employment-Management.git
                     if errorlevel 1 exit /b 1
 
-                    git fetch origin feature/Employment-Management
+                    git fetch --depth=1 origin feature/Employment-Management
                     if errorlevel 1 exit /b 1
 
                     git checkout -B feature/Employment-Management FETCH_HEAD
@@ -118,28 +119,13 @@ pipeline {
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo DOCKER LOCATION:
-                    where docker
-                    if errorlevel 1 exit /b 1
-
-                    echo.
                     echo DOCKER VERSION:
                     docker --version
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo KUBECTL LOCATION:
-                    where kubectl
-                    if errorlevel 1 exit /b 1
-
-                    echo.
                     echo KUBECTL VERSION:
                     kubectl version --client
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo GCLOUD LOCATION:
-                    where gcloud
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -163,7 +149,9 @@ pipeline {
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo Environment verification completed successfully.
+                    echo ================================
+                    echo ENVIRONMENT VERIFICATION SUCCESSFUL
+                    echo ================================
                 '''
             }
         }
@@ -174,7 +162,7 @@ pipeline {
         stage('Docker Verify') {
 
             options {
-                timeout(time: 5, unit: 'MINUTES')
+                timeout(time: 2, unit: 'MINUTES')
             }
 
             steps {
@@ -189,43 +177,13 @@ pipeline {
                     echo %DOCKER_HOST%
 
                     echo.
-                    echo DOCKER LOCATION:
-                    where docker
-                    if errorlevel 1 exit /b 1
-
-                    echo.
                     echo DOCKER VERSION:
-                    docker --version
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER CONTEXT LIST:
-                    docker context ls
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER CONTEXT:
-                    docker context show
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER SERVER:
                     docker version
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo DOCKER INFO:
-                    docker info
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER CONTAINERS:
-                    docker ps
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER HELLO WORLD TEST:
-                    docker run --rm hello-world
+                    echo DOCKER SERVER:
+                    docker info --format="Server: {{.ServerVersion}}"
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -252,11 +210,13 @@ pipeline {
                     echo MAVEN BUILD
                     echo ================================
 
-                    mvn -B -ntp clean package -DskipTests
+                    mvn -B -ntp package -DskipTests
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo Maven build completed successfully.
+                    echo ================================
+                    echo MAVEN BUILD SUCCESSFUL
+                    echo ================================
                 '''
             }
         }
@@ -278,7 +238,7 @@ pipeline {
 
                 bat '''
                     echo ================================
-                    echo TESTCONTAINERS DOCKER CHECK
+                    echo RUNNING MAVEN TESTS
                     echo ================================
 
                     echo.
@@ -286,30 +246,15 @@ pipeline {
                     echo %DOCKER_HOST%
 
                     echo.
-                    echo DOCKER VERSION:
-                    docker version
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER INFO:
-                    docker info
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER CONTAINERS:
-                    docker ps
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo RUNNING MAVEN TESTS
-                    echo ================================
+                    echo RUNNING TESTCONTAINERS TESTS:
 
                     mvn -B -ntp test
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo Tests completed successfully.
+                    echo ================================
+                    echo TESTS COMPLETED SUCCESSFULLY
+                    echo ================================
                 '''
             }
 
@@ -351,23 +296,15 @@ pipeline {
                     echo %DOCKER_HOST%
 
                     echo.
-                    echo DOCKER CONTEXT:
-                    docker context show
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo DOCKER VERSION:
-                    docker --version
-                    if errorlevel 1 exit /b 1
-
-                    echo.
                     echo BUILDING IMAGE:
                     echo %IMAGE_NAME%:%IMAGE_TAG%
 
                     echo.
-                    echo STARTING DOCKER BUILD:
+                    echo ================================
+                    echo STARTING DOCKER BUILD
+                    echo ================================
 
-                    docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
+                    docker build --progress=plain -t %IMAGE_NAME%:%IMAGE_TAG% .
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -380,8 +317,12 @@ pipeline {
                     docker images %IMAGE_NAME%:%IMAGE_TAG%
 
                     echo.
+                    echo IMAGE SIZE:
+                    docker image inspect %IMAGE_NAME%:%IMAGE_TAG% --format="Image size: {{.Size}} bytes"
+
+                    echo.
                     echo EMPLOYMENT MANAGEMENT IMAGES:
-                    docker images | findstr employment-management
+                    docker images | findstr /i employment-management
 
                     echo.
                     echo ================================
@@ -425,38 +366,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo DOCKER HOST
-                        echo ================================
-
-                        echo %DOCKER_HOST%
-
-                        echo.
-                        echo ================================
-                        echo DOCKER VERSION
-                        echo ================================
-
-                        docker version
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo DOCKER INFO
-                        echo ================================
-
-                        docker info
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo GCLOUD VERSION
-                        echo ================================
-
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo AUTHENTICATING JENKINS SERVICE ACCOUNT
+                        echo AUTHENTICATING GCP
                         echo ================================
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
@@ -464,15 +374,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo ACTIVE GOOGLE ACCOUNT
-                        echo ================================
-
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo GENERATING SHORT-LIVED ACCESS TOKEN
+                        echo GENERATING ACCESS TOKEN
                         echo ================================
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth print-access-token > "%ACCESS_TOKEN_FILE%"
@@ -483,7 +385,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo DOCKER LOGIN TO ARTIFACT REGISTRY
+                        echo DOCKER LOGIN TO GAR
                         echo ================================
 
                         docker login %GCP_REGION%-docker.pkg.dev -u oauth2accesstoken --password-stdin < "%ACCESS_TOKEN_FILE%"
@@ -493,7 +395,6 @@ pipeline {
                         )
 
                         echo.
-                        echo ================================
                         echo REMOVING ACCESS TOKEN FILE
                         echo ================================
 
@@ -507,8 +408,12 @@ pipeline {
                         docker images %IMAGE_NAME%:%IMAGE_TAG%
 
                         echo.
+                        echo IMAGE SIZE:
+                        docker image inspect %IMAGE_NAME%:%IMAGE_TAG% --format="Image size: {{.Size}} bytes"
+
+                        echo.
                         echo ================================
-                        echo PUSHING BUILD TAG
+                        echo PUSHING IMAGE TO GAR
                         echo ================================
 
                         echo IMAGE:
@@ -519,10 +424,10 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo VERIFYING IMAGE IN GAR
+                        echo VERIFYING PUSHED IMAGE
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" artifacts docker images list "%IMAGE_NAME%" --include-tags --project="%GCP_PROJECT%" --format="table(package,version,tags)"
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" artifacts docker images describe "%IMAGE_NAME%:%IMAGE_TAG%" --project="%GCP_PROJECT%"
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -565,36 +470,24 @@ pipeline {
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
 
                         echo.
-                        echo ================================
-                        echo CLOUDSDK CONFIG
-                        echo ================================
-
+                        echo CLOUDSDK CONFIG:
                         echo %CLOUDSDK_CONFIG%
 
                         echo.
-                        echo ================================
-                        echo KUBECONFIG
-                        echo ================================
-
+                        echo KUBECONFIG:
                         echo %KUBECONFIG%
 
                         echo.
-                        echo ================================
-                        echo GKE CLUSTER
-                        echo ================================
-
+                        echo GKE CLUSTER:
                         echo %GKE_CLUSTER%
 
                         echo.
-                        echo ================================
-                        echo GKE LOCATION
-                        echo ================================
-
+                        echo GKE LOCATION:
                         echo %GKE_LOCATION%
 
                         echo.
                         echo ================================
-                        echo GKE AUTH PLUGIN
+                        echo VERIFYING GKE AUTH PLUGIN
                         echo ================================
 
                         where gke-gcloud-auth-plugin.exe
@@ -605,7 +498,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo AUTHENTICATING JENKINS SERVICE ACCOUNT
+                        echo AUTHENTICATING GCP SERVICE ACCOUNT
                         echo ================================
 
                         call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
@@ -613,31 +506,15 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo ACTIVE GOOGLE ACCOUNT
-                        echo ================================
-
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth list
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo GCP PROJECT
-                        echo ================================
-
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" config get-value project
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
                         echo GETTING GKE CREDENTIALS
                         echo ================================
 
-                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --location %GKE_LOCATION% --project %GCP_PROJECT% --verbosity=info
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --location %GKE_LOCATION% --project %GCP_PROJECT% --verbosity=error
                         if errorlevel 1 exit /b 1
 
                         echo.
                         echo ================================
-                        echo KUBECONFIG CREATED
+                        echo VERIFYING KUBECONFIG
                         echo ================================
 
                         if not exist "%KUBECONFIG%" (
@@ -649,7 +526,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo KUBERNETES CLUSTER
+                        echo VERIFYING KUBERNETES CLUSTER
                         echo ================================
 
                         kubectl get nodes
@@ -726,81 +603,82 @@ pipeline {
 
             steps {
 
-                withCredentials([
-                    file(
-                        credentialsId: 'gcp-jenkins-cicd',
-                        variable: 'GCP_KEY_FILE'
+                bat '''
+                    echo ================================
+                    echo VERIFY KUBERNETES DEPLOYMENT
+                    echo ================================
+
+                    set PATH=%GCLOUD_HOME%\\bin;%PATH%
+
+                    set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                    set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
+
+                    echo.
+                    echo CLOUDSDK CONFIG:
+                    echo %CLOUDSDK_CONFIG%
+
+                    echo.
+                    echo KUBECONFIG:
+                    echo %KUBECONFIG%
+
+                    if not exist "%KUBECONFIG%" (
+                        echo ERROR: Kubeconfig file does not exist.
+                        exit /b 1
                     )
-                ]) {
 
-                    bat '''
-                        echo ================================
-                        echo VERIFY KUBERNETES DEPLOYMENT
-                        echo ================================
+                    echo.
+                    echo ================================
+                    echo PODS
+                    echo ================================
 
-                        set PATH=%GCLOUD_HOME%\\bin;%PATH%
+                    kubectl get pods -n %K8S_NAMESPACE%
+                    if errorlevel 1 exit /b 1
 
-                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
-                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
+                    echo.
+                    echo ================================
+                    echo SERVICES
+                    echo ================================
 
-                        echo.
-                        echo CLOUDSDK CONFIG:
-                        echo %CLOUDSDK_CONFIG%
+                    kubectl get svc -n %K8S_NAMESPACE%
+                    if errorlevel 1 exit /b 1
 
-                        echo.
-                        echo KUBECONFIG:
-                        echo %KUBECONFIG%
+                    echo.
+                    echo ================================
+                    echo DEPLOYMENT
+                    echo ================================
 
-                        if not exist "%KUBECONFIG%" (
-                            echo ERROR: Kubeconfig file does not exist.
-                            exit /b 1
-                        )
+                    kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
+                    if errorlevel 1 exit /b 1
 
-                        echo.
-                        echo ================================
-                        echo PODS
-                        echo ================================
+                    echo.
+                    echo ================================
+                    echo DEPLOYMENT IMAGE
+                    echo ================================
 
-                        kubectl get pods -n %K8S_NAMESPACE%
-                        if errorlevel 1 exit /b 1
+                    kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE% -o jsonpath="{.spec.template.spec.containers[0].image}"
+                    if errorlevel 1 exit /b 1
 
-                        echo.
-                        echo ================================
-                        echo SERVICES
-                        echo ================================
+                    echo.
+                    echo.
+                    echo ================================
+                    echo ROLLOUT STATUS
+                    echo ================================
 
-                        kubectl get svc -n %K8S_NAMESPACE%
-                        if errorlevel 1 exit /b 1
+                    kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
+                    if errorlevel 1 exit /b 1
 
-                        echo.
-                        echo ================================
-                        echo DEPLOYMENT
-                        echo ================================
-
-                        kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo ROLLOUT STATUS
-                        echo ================================
-
-                        kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
-                        if errorlevel 1 exit /b 1
-
-                        echo.
-                        echo ================================
-                        echo KUBERNETES DEPLOYMENT VERIFIED
-                        echo ================================
-                    '''
-                }
+                    echo.
+                    echo ================================
+                    echo KUBERNETES DEPLOYMENT VERIFIED
+                    echo ================================
+                '''
             }
         }
     }
 
-    // ================================================================
+    // ============================================================
     // POST ACTIONS
-    // ================================================================
+    // ============================================================
     post {
 
         success {
@@ -819,6 +697,14 @@ pipeline {
             echo 'Check the console output for the failed stage.'
         }
 
+        aborted {
+
+            echo '================================'
+            echo 'CI/CD PIPELINE ABORTED'
+            echo '================================'
+            echo 'The pipeline exceeded its configured timeout or was manually stopped.'
+        }
+
         always {
 
             echo 'Pipeline execution completed.'
@@ -828,8 +714,6 @@ pipeline {
                 echo ================================
                 echo CLEANING JENKINS TEMP CONFIG
                 echo ================================
-
-                docker logout %GCP_REGION%-docker.pkg.dev
 
                 if exist "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%"
                 if exist "%WORKSPACE%\\.docker-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.docker-%BUILD_NUMBER%"
