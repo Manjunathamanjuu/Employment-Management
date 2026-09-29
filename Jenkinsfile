@@ -26,7 +26,9 @@ pipeline {
         GCP_PROJECT = 'project-7e1069a7-5b78-49e8-9b8'
         GCP_REGION = 'us-central1'
 
-        // GKE cluster details
+        // ============================================================
+        // GKE
+        // ============================================================
         GKE_CLUSTER = 'employee-managment-cluster-1'
         GKE_LOCATION = 'us-central1'
 
@@ -54,7 +56,7 @@ pipeline {
     stages {
 
         // ============================================================
-        // CHECKOUT
+        // 1. CHECKOUT
         // ============================================================
         stage('Checkout') {
             steps {
@@ -85,7 +87,7 @@ pipeline {
         }
 
         // ============================================================
-        // VERIFY ENVIRONMENT
+        // 2. VERIFY ENVIRONMENT
         // ============================================================
         stage('Verify Environment') {
             steps {
@@ -159,8 +161,7 @@ pipeline {
         }
 
         // ============================================================
-        // DOCKER VERIFY
-        // IMPORTANT: Run BEFORE Maven Test
+        // 3. DOCKER VERIFY
         // ============================================================
         stage('Docker Verify') {
             options {
@@ -222,7 +223,7 @@ pipeline {
         }
 
         // ============================================================
-        // BUILD
+        // 4. BUILD
         // ============================================================
         stage('Build') {
             options {
@@ -246,7 +247,7 @@ pipeline {
         }
 
         // ============================================================
-        // TEST
+        // 5. TEST
         // ============================================================
         stage('Test') {
             options {
@@ -288,9 +289,10 @@ pipeline {
 
             post {
                 always {
+
                     bat '''
                         echo ================================
-                        echo CLEANING UP TESTCONTAINERS
+                        echo CLEANING TESTCONTAINERS
                         echo ================================
 
                         for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
@@ -302,7 +304,7 @@ pipeline {
         }
 
         // ============================================================
-        // DOCKER BUILD
+        // 6. DOCKER BUILD
         // ============================================================
         stage('Docker Build') {
             options {
@@ -320,24 +322,28 @@ pipeline {
                     echo DOCKER HOST:
                     echo %DOCKER_HOST%
 
-                    docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
+                    echo.
+                    echo BUILDING IMAGE:
+                    echo %IMAGE_NAME%:%IMAGE_TAG%
+
+                    docker build --progress=plain -t %IMAGE_NAME%:%IMAGE_TAG% .
                     if errorlevel 1 exit /b 1
 
-                    docker tag %IMAGE_NAME%:%IMAGE_TAG% %IMAGE_NAME%:latest
-                    if errorlevel 1 exit /b 1
+                    echo.
+                    echo ================================
+                    echo DOCKER IMAGE CREATED
+                    echo ================================
+
+                    docker images | findstr employment-management
 
                     echo.
                     echo Docker image built successfully.
-
-                    echo.
-                    echo DOCKER IMAGES:
-                    docker images | findstr employment-management
                 '''
             }
         }
 
         // ============================================================
-        // DOCKER PUSH
+        // 7. DOCKER PUSH
         // ============================================================
         stage('Docker Push') {
             options {
@@ -373,6 +379,14 @@ pipeline {
                         echo ================================
 
                         echo %DOCKER_HOST%
+
+                        echo.
+                        echo ================================
+                        echo DOCKER VERSION
+                        echo ================================
+
+                        docker version
+                        if errorlevel 1 exit /b 1
 
                         echo.
                         echo ================================
@@ -429,18 +443,28 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo PUSHING BUILD IMAGE
+                        echo LOCAL IMAGE
                         echo ================================
+
+                        docker images | findstr employment-management
+
+                        echo.
+                        echo ================================
+                        echo PUSHING BUILD TAG ONLY
+                        echo ================================
+
+                        echo IMAGE:
+                        echo %IMAGE_NAME%:%IMAGE_TAG%
 
                         docker push %IMAGE_NAME%:%IMAGE_TAG%
                         if errorlevel 1 exit /b 1
 
                         echo.
                         echo ================================
-                        echo PUSHING LATEST IMAGE
+                        echo VERIFYING IMAGE IN GAR
                         echo ================================
 
-                        docker push %IMAGE_NAME%:latest
+                        call "%GCLOUD_HOME%\\bin\\gcloud.cmd" artifacts docker images list "%IMAGE_NAME%" --include-tags --project="%GCP_PROJECT%" --format="table(package,version,tags)"
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -453,7 +477,7 @@ pipeline {
         }
 
         // ============================================================
-        // KUBERNETES DEPLOY
+        // 8. KUBERNETES DEPLOY
         // ============================================================
         stage('Kubernetes Deploy') {
             options {
@@ -476,7 +500,6 @@ pipeline {
 
                         set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
-                        rem Use workspace-local config files.
                         set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
                         set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
@@ -615,8 +638,11 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo UPDATING DEPLOYMENT IMAGE TO BUILD %IMAGE_TAG%
+                        echo UPDATING DEPLOYMENT IMAGE
                         echo ================================
+
+                        echo IMAGE:
+                        echo %IMAGE_NAME%:%IMAGE_TAG%
 
                         kubectl set image deployment/%K8S_DEPLOYMENT% %K8S_DEPLOYMENT%=%IMAGE_NAME%:%IMAGE_TAG% -n %K8S_NAMESPACE%
                         if errorlevel 1 exit /b 1
@@ -631,7 +657,7 @@ pipeline {
         }
 
         // ============================================================
-        // VERIFY DEPLOYMENT
+        // 9. VERIFY DEPLOYMENT
         // ============================================================
         stage('Verify Deployment') {
             options {
@@ -654,7 +680,6 @@ pipeline {
 
                         set PATH=%GCLOUD_HOME%\\bin;%PATH%
 
-                        rem Reuse the same workspace-local configuration.
                         set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
                         set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
@@ -672,17 +697,26 @@ pipeline {
                         )
 
                         echo.
-                        echo PODS:
+                        echo ================================
+                        echo PODS
+                        echo ================================
+
                         kubectl get pods -n %K8S_NAMESPACE%
                         if errorlevel 1 exit /b 1
 
                         echo.
-                        echo SERVICES:
+                        echo ================================
+                        echo SERVICES
+                        echo ================================
+
                         kubectl get svc -n %K8S_NAMESPACE%
                         if errorlevel 1 exit /b 1
 
                         echo.
-                        echo DEPLOYMENT:
+                        echo ================================
+                        echo DEPLOYMENT
+                        echo ================================
+
                         kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
                         if errorlevel 1 exit /b 1
 
@@ -724,6 +758,7 @@ pipeline {
         }
 
         always {
+
             echo 'Pipeline execution completed.'
 
             bat '''
@@ -731,8 +766,6 @@ pipeline {
                 echo ================================
                 echo CLEANING JENKINS TEMP CONFIG
                 echo ================================
-
-                set DOCKER_CONFIG=%WORKSPACE%\\.docker-%BUILD_NUMBER%
 
                 docker logout %GCP_REGION%-docker.pkg.dev
 
