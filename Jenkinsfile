@@ -50,9 +50,6 @@ pipeline {
 
         // ============================================================
         // DOCKER DESKTOP
-        // IMPORTANT:
-        // Use Docker Desktop Linux engine named pipe.
-        // DO NOT use docker_engine here.
         // ============================================================
         DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 
@@ -356,6 +353,12 @@ pipeline {
                     echo.
                     echo DOCKER CONTEXT:
                     docker context show
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER VERSION:
+                    docker --version
+                    if errorlevel 1 exit /b 1
 
                     echo.
                     echo BUILDING IMAGE:
@@ -364,7 +367,7 @@ pipeline {
                     echo.
                     echo STARTING DOCKER BUILD:
 
-                    docker build --progress=plain -t %IMAGE_NAME%:%IMAGE_TAG% .
+                    docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -372,10 +375,18 @@ pipeline {
                     echo DOCKER IMAGE CREATED
                     echo ================================
 
+                    echo.
+                    echo IMAGE DETAILS:
+                    docker images %IMAGE_NAME%:%IMAGE_TAG%
+
+                    echo.
+                    echo EMPLOYMENT MANAGEMENT IMAGES:
                     docker images | findstr employment-management
 
                     echo.
-                    echo Docker image built successfully.
+                    echo ================================
+                    echo DOCKER BUILD SUCCESSFUL
+                    echo ================================
                 '''
             }
         }
@@ -493,7 +504,7 @@ pipeline {
                         echo LOCAL IMAGE
                         echo ================================
 
-                        docker images | findstr employment-management
+                        docker images %IMAGE_NAME%:%IMAGE_TAG%
 
                         echo.
                         echo ================================
