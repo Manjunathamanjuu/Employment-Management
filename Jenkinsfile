@@ -18,11 +18,17 @@ pipeline {
 
     environment {
 
+        // ============================================================
+        // APPLICATION
+        // ============================================================
         APP_NAME = 'employment-management'
 
         IMAGE_NAME = 'us-central1-docker.pkg.dev/project-7e1069a7-5b78-49e8-9b8/quickstart-docker-repo/employment-management'
         IMAGE_TAG = "${BUILD_NUMBER}"
 
+        // ============================================================
+        // GCP
+        // ============================================================
         GCP_PROJECT = 'project-7e1069a7-5b78-49e8-9b8'
         GCP_REGION = 'us-central1'
 
@@ -44,8 +50,11 @@ pipeline {
 
         // ============================================================
         // DOCKER DESKTOP
+        // IMPORTANT:
+        // Use Docker Desktop Linux engine named pipe.
+        // DO NOT use docker_engine here.
         // ============================================================
-        DOCKER_HOST = 'npipe:////./pipe/docker_engine'
+        DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 
         // ============================================================
         // GKE AUTH PLUGIN
@@ -59,6 +68,7 @@ pipeline {
         // 1. CHECKOUT
         // ============================================================
         stage('Checkout') {
+
             steps {
 
                 deleteDir()
@@ -90,6 +100,7 @@ pipeline {
         // 2. VERIFY ENVIRONMENT
         // ============================================================
         stage('Verify Environment') {
+
             steps {
 
                 bat '''
@@ -164,6 +175,7 @@ pipeline {
         // 3. DOCKER VERIFY
         // ============================================================
         stage('Docker Verify') {
+
             options {
                 timeout(time: 5, unit: 'MINUTES')
             }
@@ -187,6 +199,11 @@ pipeline {
                     echo.
                     echo DOCKER VERSION:
                     docker --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER CONTEXT LIST:
+                    docker context ls
                     if errorlevel 1 exit /b 1
 
                     echo.
@@ -226,6 +243,7 @@ pipeline {
         // 4. BUILD
         // ============================================================
         stage('Build') {
+
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -250,6 +268,7 @@ pipeline {
         // 5. TEST
         // ============================================================
         stage('Test') {
+
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -265,12 +284,22 @@ pipeline {
                     echo TESTCONTAINERS DOCKER CHECK
                     echo ================================
 
+                    echo.
+                    echo DOCKER HOST:
+                    echo %DOCKER_HOST%
+
+                    echo.
+                    echo DOCKER VERSION:
                     docker version
                     if errorlevel 1 exit /b 1
 
+                    echo.
+                    echo DOCKER INFO:
                     docker info
                     if errorlevel 1 exit /b 1
 
+                    echo.
+                    echo DOCKER CONTAINERS:
                     docker ps
                     if errorlevel 1 exit /b 1
 
@@ -288,6 +317,7 @@ pipeline {
             }
 
             post {
+
                 always {
 
                     bat '''
@@ -307,6 +337,7 @@ pipeline {
         // 6. DOCKER BUILD
         // ============================================================
         stage('Docker Build') {
+
             options {
                 timeout(time: 20, unit: 'MINUTES')
             }
@@ -323,8 +354,15 @@ pipeline {
                     echo %DOCKER_HOST%
 
                     echo.
+                    echo DOCKER CONTEXT:
+                    docker context show
+
+                    echo.
                     echo BUILDING IMAGE:
                     echo %IMAGE_NAME%:%IMAGE_TAG%
+
+                    echo.
+                    echo STARTING DOCKER BUILD:
 
                     docker build --progress=plain -t %IMAGE_NAME%:%IMAGE_TAG% .
                     if errorlevel 1 exit /b 1
@@ -346,6 +384,7 @@ pipeline {
         // 7. DOCKER PUSH
         // ============================================================
         stage('Docker Push') {
+
             options {
                 timeout(time: 15, unit: 'MINUTES')
             }
@@ -386,6 +425,14 @@ pipeline {
                         echo ================================
 
                         docker version
+                        if errorlevel 1 exit /b 1
+
+                        echo.
+                        echo ================================
+                        echo DOCKER INFO
+                        echo ================================
+
+                        docker info
                         if errorlevel 1 exit /b 1
 
                         echo.
@@ -450,7 +497,7 @@ pipeline {
 
                         echo.
                         echo ================================
-                        echo PUSHING BUILD TAG ONLY
+                        echo PUSHING BUILD TAG
                         echo ================================
 
                         echo IMAGE:
@@ -480,6 +527,7 @@ pipeline {
         // 8. KUBERNETES DEPLOY
         // ============================================================
         stage('Kubernetes Deploy') {
+
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -660,6 +708,7 @@ pipeline {
         // 9. VERIFY DEPLOYMENT
         // ============================================================
         stage('Verify Deployment') {
+
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -744,6 +793,7 @@ pipeline {
     post {
 
         success {
+
             echo '================================'
             echo 'CI/CD PIPELINE SUCCESSFUL'
             echo '================================'
@@ -751,6 +801,7 @@ pipeline {
         }
 
         failure {
+
             echo '================================'
             echo 'CI/CD PIPELINE FAILED'
             echo '================================'
