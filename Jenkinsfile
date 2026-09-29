@@ -159,70 +159,8 @@ pipeline {
         }
 
         // ============================================================
-        // BUILD
-        // ============================================================
-        stage('Build') {
-            options {
-                timeout(time: 10, unit: 'MINUTES')
-            }
-            steps {
-
-                bat '''
-                    echo ================================
-                    echo MAVEN BUILD
-                    echo ================================
-
-                    mvn -B -ntp clean package -DskipTests
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo Maven build completed successfully.
-                '''
-            }
-        }
-
-        // ============================================================
-        // TEST
-        // ============================================================
-        stage('Test') {
-            options {
-                timeout(time: 10, unit: 'MINUTES')
-            }
-
-            environment {
-                TESTCONTAINERS_RYUK_DISABLED = 'true'
-            }
-
-            steps {
-
-                bat '''
-                    echo ================================
-                    echo RUNNING TESTS
-                    echo ================================
-
-                    mvn -B -ntp test
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo Tests completed successfully.
-                '''
-            }
-
-            post {
-                always {
-                    bat '''
-                        echo CLEANING UP TESTCONTAINERS CONTAINERS
-
-                        for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
-
-                        exit /b 0
-                    '''
-                }
-            }
-        }
-
-        // ============================================================
         // DOCKER VERIFY
+        // IMPORTANT: Run BEFORE Maven Test
         // ============================================================
         stage('Docker Verify') {
             options {
@@ -266,8 +204,100 @@ pipeline {
                     if errorlevel 1 exit /b 1
 
                     echo.
-                    echo Docker verification completed successfully.
+                    echo DOCKER CONTAINERS:
+                    docker ps
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo DOCKER HELLO WORLD TEST:
+                    docker run --rm hello-world
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo ================================
+                    echo DOCKER CONNECTION SUCCESSFUL
+                    echo ================================
                 '''
+            }
+        }
+
+        // ============================================================
+        // BUILD
+        // ============================================================
+        stage('Build') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
+            steps {
+
+                bat '''
+                    echo ================================
+                    echo MAVEN BUILD
+                    echo ================================
+
+                    mvn -B -ntp clean package -DskipTests
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo Maven build completed successfully.
+                '''
+            }
+        }
+
+        // ============================================================
+        // TEST
+        // ============================================================
+        stage('Test') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
+            environment {
+                TESTCONTAINERS_RYUK_DISABLED = 'true'
+            }
+
+            steps {
+
+                bat '''
+                    echo ================================
+                    echo TESTCONTAINERS DOCKER CHECK
+                    echo ================================
+
+                    docker version
+                    if errorlevel 1 exit /b 1
+
+                    docker info
+                    if errorlevel 1 exit /b 1
+
+                    docker ps
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo ================================
+                    echo RUNNING MAVEN TESTS
+                    echo ================================
+
+                    mvn -B -ntp test
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo Tests completed successfully.
+                '''
+            }
+
+            post {
+                always {
+                    bat '''
+                        echo ================================
+                        echo CLEANING UP TESTCONTAINERS
+                        echo ================================
+
+                        for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
+
+                        exit /b 0
+                    '''
+                }
             }
         }
 
@@ -716,4 +746,3 @@ pipeline {
         }
     }
 }
-
