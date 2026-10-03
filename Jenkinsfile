@@ -49,7 +49,7 @@ pipeline {
         // =========================
         // DOCKER HUB
         // =========================
-        DOCKERHUB_USERNAME = 'YOUR_DOCKERHUB_USERNAME'
+        DOCKERHUB_USERNAME = 'manju1312'
         DOCKER_IMAGE = "${DOCKERHUB_USERNAME}/employment-management"
 
         // =========================
@@ -127,7 +127,7 @@ pipeline {
 
                     echo.
                     echo Docker Hub Image:
-                    echo %DOCKER_IMAGE%:%IMAGE_TAG%
+                    echo %DOCKER_IMAGE%
 
                     echo ==========================================
                 '''
@@ -215,14 +215,46 @@ pipeline {
                     echo MAVEN TEST
                     echo ==========================================
 
+                    echo.
+                    echo Testcontainers Docker configuration:
+                    if exist "src\\test\\resources\\docker-java.properties" (
+                        type "src\\test\\resources\\docker-java.properties"
+                    ) else (
+                        echo WARNING: docker-java.properties not found.
+                    )
+
+                    echo.
+                    echo Docker Host:
+                    echo %DOCKER_HOST%
+
+                    echo.
+                    echo Disabling Testcontainers Ryuk...
                     set TESTCONTAINERS_RYUK_DISABLED=true
+
+                    echo.
+                    echo Running Maven tests...
 
                     mvn -B -ntp test
 
+                    if %ERRORLEVEL% NEQ 0 (
+                        echo.
+                        echo ==========================================
+                        echo MAVEN TEST FAILED
+                        echo ==========================================
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo Maven tests completed successfully.
+
                     echo.
                     echo Cleaning Testcontainers...
+
                     for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
 
+                    echo.
+                    echo ==========================================
+                    echo MAVEN TEST SUCCESSFUL
                     echo ==========================================
                 '''
             }
@@ -233,6 +265,7 @@ pipeline {
         // =========================================================
         stage('Docker Build') {
             steps {
+
                 script {
                     env.FINAL_IMAGE_TAG = params.IMAGE_TAG?.trim()
                         ? params.IMAGE_TAG.trim()
@@ -244,12 +277,24 @@ pipeline {
                     echo DOCKER BUILD
                     echo ==========================================
 
-                    echo Image:
+                    echo.
+                    echo Docker Image:
                     echo %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
+
+                    echo.
+                    echo Building Docker image...
 
                     docker build ^
                         -t %DOCKER_IMAGE%:%FINAL_IMAGE_TAG% ^
                         -t %DOCKER_IMAGE%:latest .
+
+                    if %ERRORLEVEL% NEQ 0 (
+                        echo Docker build failed.
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo Docker image build successful.
 
                     echo.
                     echo Docker Images:
@@ -294,6 +339,10 @@ pipeline {
                         echo ==========================================
                         echo PUSHING DOCKER IMAGE
                         echo ==========================================
+
+                        echo.
+                        echo Pushing:
+                        echo %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
 
                         docker push %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
 
@@ -350,6 +399,7 @@ pipeline {
 
                         if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
 
+                        echo.
                         echo Activating GCP service account...
 
                         gcloud auth activate-service-account ^
@@ -379,6 +429,11 @@ pipeline {
                         echo Kubernetes Nodes:
 
                         kubectl get nodes
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Kubernetes connection failed.
+                            exit /b 1
+                        )
 
                         echo ==========================================
                     '''
@@ -422,6 +477,11 @@ pipeline {
                             --key-file="%GCP_KEY_FILE%" ^
                             --project="%GCP_PROJECT%"
 
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo GCP authentication failed.
+                            exit /b 1
+                        )
+
                         echo.
                         echo Getting GKE credentials...
 
@@ -431,90 +491,146 @@ pipeline {
                             --project %GCP_PROJECT% ^
                             --verbosity=error
 
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Failed to get GKE credentials.
+                            exit /b 1
+                        )
+
                         echo.
-                        echo Kubernetes Namespace:
+                        echo ==========================================
+                        echo KUBERNETES NAMESPACE
+                        echo ==========================================
 
                         kubectl apply -f Kubernetes-manifests/namespace.yaml
 
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Namespace deployment failed.
+                            exit /b 1
+                        )
+
                         echo.
-                        echo Service Account:
+                        echo ==========================================
+                        echo SERVICE ACCOUNT
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/serviceaccount.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo Role:
+                        echo ==========================================
+                        echo ROLE
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/role.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo RoleBinding:
+                        echo ==========================================
+                        echo ROLE BINDING
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/rolebinding.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo ClusterRoleBinding:
+                        echo ==========================================
+                        echo CLUSTER ROLE BINDING
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/clusterrolebinding.yaml
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo PostgreSQL ConfigMap:
+                        echo ==========================================
+                        echo POSTGRESQL CONFIGMAP
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/postgres-configmap.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo PostgreSQL Secret:
+                        echo ==========================================
+                        echo POSTGRESQL SECRET
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/postgres-secret.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo Persistent Volume Claim:
+                        echo ==========================================
+                        echo PERSISTENT VOLUME CLAIM
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/persistentvolumeclaim.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo PostgreSQL StatefulSet:
+                        echo ==========================================
+                        echo POSTGRESQL STATEFULSET
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/statefulset.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo Headless Service:
+                        echo ==========================================
+                        echo HEADLESS SERVICE
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/headless-service.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo Application Deployment:
+                        echo ==========================================
+                        echo APPLICATION DEPLOYMENT
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/deployment.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
-                        echo Application Service:
+                        echo ==========================================
+                        echo APPLICATION SERVICE
+                        echo ==========================================
 
                         kubectl apply ^
                             -f Kubernetes-manifests/service.yaml ^
                             -n %K8S_NAMESPACE%
 
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
                         echo.
                         echo ==========================================
-                        echo UPDATING IMAGE
+                        echo UPDATING APPLICATION IMAGE
                         echo ==========================================
 
                         echo Docker Image:
@@ -530,7 +646,9 @@ pipeline {
                         )
 
                         echo.
-                        echo Waiting for rollout...
+                        echo ==========================================
+                        echo WAITING FOR ROLLOUT
+                        echo ==========================================
 
                         kubectl rollout status ^
                             deployment/%K8S_DEPLOYMENT% ^
@@ -539,6 +657,14 @@ pipeline {
 
                         if %ERRORLEVEL% NEQ 0 (
                             echo Kubernetes rollout failed.
+                            echo.
+                            echo Deployment status:
+                            kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
+
+                            echo.
+                            echo Pods:
+                            kubectl get pods -n %K8S_NAMESPACE% -o wide
+
                             exit /b 1
                         )
 
@@ -578,15 +704,25 @@ pipeline {
                         set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
                         set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
 
+                        echo.
+                        echo Authenticating with GCP...
+
                         gcloud auth activate-service-account ^
                             --key-file="%GCP_KEY_FILE%" ^
                             --project="%GCP_PROJECT%"
+
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
+
+                        echo.
+                        echo Getting GKE credentials...
 
                         gcloud container clusters get-credentials ^
                             %GKE_CLUSTER% ^
                             --location %GKE_LOCATION% ^
                             --project %GCP_PROJECT% ^
                             --verbosity=error
+
+                        if %ERRORLEVEL% NEQ 0 exit /b 1
 
                         echo.
                         echo ==========================================
@@ -643,6 +779,11 @@ pipeline {
                             deployment/%K8S_DEPLOYMENT% ^
                             -n %K8S_NAMESPACE% ^
                             --timeout=5m
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Rollout verification failed.
+                            exit /b 1
+                        )
 
                         echo.
                         echo ==========================================
