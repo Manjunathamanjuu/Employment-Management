@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -80,6 +81,11 @@ pipeline {
         DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 
         // =========================
+        // DOCKER API
+        // =========================
+        DOCKER_API_VERSION = '1.44'
+
+        // =========================
         // GKE AUTH PLUGIN
         // =========================
         USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
@@ -124,6 +130,10 @@ pipeline {
                     echo.
                     echo Docker Host:
                     echo %DOCKER_HOST%
+
+                    echo.
+                    echo Docker API Version:
+                    echo %DOCKER_API_VERSION%
 
                     echo.
                     echo Docker Hub Image:
@@ -174,7 +184,16 @@ pipeline {
                     echo DOCKER VERIFY
                     echo ==========================================
 
+                    echo.
+                    echo Docker API Version:
+                    echo %DOCKER_API_VERSION%
+
+                    echo.
+                    echo Docker Version:
                     docker version
+
+                    echo.
+                    echo Docker Info:
                     docker info
 
                     echo ==========================================
@@ -193,6 +212,17 @@ pipeline {
                     echo ==========================================
 
                     mvn -B -ntp clean package -DskipTests
+
+                    if %ERRORLEVEL% NEQ 0 (
+                        echo.
+                        echo ==========================================
+                        echo MAVEN BUILD FAILED
+                        echo ==========================================
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo Maven build completed successfully.
 
                     echo ==========================================
                 '''
@@ -217,6 +247,7 @@ pipeline {
 
                     echo.
                     echo Testcontainers Docker configuration:
+
                     if exist "src\\test\\resources\\docker-java.properties" (
                         type "src\\test\\resources\\docker-java.properties"
                     ) else (
@@ -228,8 +259,30 @@ pipeline {
                     echo %DOCKER_HOST%
 
                     echo.
+                    echo Docker API Version:
+                    echo %DOCKER_API_VERSION%
+
+                    echo.
+                    echo Configuring Testcontainers Docker API...
+
+                    set "DOCKER_API_VERSION=1.44"
+                    set "MAVEN_OPTS=-Dapi.version=1.44"
+
+                    echo.
+                    echo DOCKER_API_VERSION:
+                    echo %DOCKER_API_VERSION%
+
+                    echo.
+                    echo MAVEN_OPTS:
+                    echo %MAVEN_OPTS%
+
+                    echo.
                     echo Disabling Testcontainers Ryuk...
-                    set TESTCONTAINERS_RYUK_DISABLED=true
+                    set "TESTCONTAINERS_RYUK_DISABLED=true"
+
+                    echo.
+                    echo TESTCONTAINERS_RYUK_DISABLED:
+                    echo %TESTCONTAINERS_RYUK_DISABLED%
 
                     echo.
                     echo Running Maven tests...
@@ -241,6 +294,15 @@ pipeline {
                         echo ==========================================
                         echo MAVEN TEST FAILED
                         echo ==========================================
+
+                        echo.
+                        echo Docker containers:
+                        docker ps -a
+
+                        echo.
+                        echo Testcontainers containers:
+                        docker ps -a --filter "label=org.testcontainers=true"
+
                         exit /b 1
                     )
 
@@ -250,7 +312,9 @@ pipeline {
                     echo.
                     echo Cleaning Testcontainers...
 
-                    for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
+                    for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do (
+                        docker rm -f %%i
+                    )
 
                     echo.
                     echo ==========================================
@@ -657,6 +721,7 @@ pipeline {
 
                         if %ERRORLEVEL% NEQ 0 (
                             echo Kubernetes rollout failed.
+
                             echo.
                             echo Deployment status:
                             kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
@@ -664,6 +729,10 @@ pipeline {
                             echo.
                             echo Pods:
                             kubectl get pods -n %K8S_NAMESPACE% -o wide
+
+                            echo.
+                            echo Pod descriptions:
+                            kubectl describe pods -n %K8S_NAMESPACE%
 
                             exit /b 1
                         )
@@ -881,3 +950,4 @@ pipeline {
         }
     }
 }
+```
