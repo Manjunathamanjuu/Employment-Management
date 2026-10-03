@@ -1,729 +1,742 @@
 pipeline {
+    agent any
 
-agent any
-
-tools {
-    jdk 'JDK-17'
-    maven 'Maven-3.9.16'
-}
-
-// ============================================================
-// GLOBAL OPTIONS
-// ============================================================
-options {
-    timeout(time: 60, unit: 'MINUTES')
-    disableConcurrentBuilds()
-    skipDefaultCheckout(true)
-    buildDiscarder(logRotator(numToKeepStr: '20'))
-}
-
-environment {
-
-    // ============================================================
-    // APPLICATION
-    // ============================================================
-    APP_NAME = 'employment-management'
-
-    IMAGE_NAME = 'us-central1-docker.pkg.dev/project-7e1069a7-5b78-49e8-9b8/quickstart-docker-repo/employment-management'
-    IMAGE_TAG = "${BUILD_NUMBER}"
-
-    // ============================================================
-    // GCP
-    // ============================================================
-    GCP_PROJECT = 'project-7e1069a7-5b78-49e8-9b8'
-    GCP_REGION = 'us-central1'
-
-    // ============================================================
-    // GKE
-    // ============================================================
-    GKE_CLUSTER = 'employee-managment-cluster-1'
-    GKE_LOCATION = 'us-central1'
-
-    K8S_NAMESPACE = 'stateful-demo'
-    K8S_DEPLOYMENT = 'employment-management'
-
-    // ============================================================
-    // GOOGLE CLOUD SDK
-    // ============================================================
-    GCLOUD_HOME = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk'
-
-    CLOUDSDK_PYTHON = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\bundledpython\\python.exe'
-
-    // ============================================================
-    // DOCKER DESKTOP
-    // ============================================================
-    DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
-
-    // ============================================================
-    // GKE AUTH PLUGIN
-    // ============================================================
-    USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
-}
-
-stages {
-
-    // ============================================================
-    // 1. CHECKOUT
-    // ============================================================
-    stage('Checkout') {
-
-        steps {
-
-            deleteDir()
-
-            bat '''
-                echo ================================
-                echo CHECKOUT SOURCE CODE
-                echo ================================
-
-                git init
-                if errorlevel 1 exit /b 1
-
-                git remote add origin https://github.com/Manjunathamanjuu/Employment-Management.git
-                if errorlevel 1 exit /b 1
-
-                git fetch --depth=1 origin feature/Employment-Management
-                if errorlevel 1 exit /b 1
-
-                git checkout -B feature/Employment-Management FETCH_HEAD
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo Checkout completed successfully.
-            '''
-        }
+    tools {
+        jdk 'JDK-17'
+        maven 'Maven-3.9.16'
     }
 
-    // ============================================================
-    // 2. VERIFY ENVIRONMENT
-    // ============================================================
-    stage('Verify Environment') {
-
-        steps {
-
-            bat '''
-                echo ================================
-                echo VERIFY ENVIRONMENT
-                echo ================================
-
-                set PATH=%GCLOUD_HOME%\\bin;%PATH%
-
-                echo.
-                echo JAVA VERSION:
-                java -version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo MAVEN VERSION:
-                mvn -version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo DOCKER VERSION:
-                docker --version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo KUBECTL VERSION:
-                kubectl version --client
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo GCLOUD VERSION:
-                call "%GCLOUD_HOME%\\bin\\gcloud.cmd" --version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo GKE AUTH PLUGIN:
-                where gke-gcloud-auth-plugin.exe
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo GKE AUTH PLUGIN VERSION:
-                "%GCLOUD_HOME%\\bin\\gke-gcloud-auth-plugin.exe" --version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo HELM VERSION:
-                helm version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo ENVIRONMENT VERIFICATION SUCCESSFUL
-                echo ================================
-            '''
-        }
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
-    // ============================================================
-    // 3. DOCKER VERIFY
-    // ============================================================
-    stage('Docker Verify') {
+    parameters {
+        string(
+            name: 'BRANCH',
+            defaultValue: 'feature/Employment-Management',
+            description: 'Git branch to build'
+        )
 
-        options {
-            timeout(time: 2, unit: 'MINUTES')
-        }
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: '',
+            description: 'Docker image tag. Leave empty to use BUILD_NUMBER.'
+        )
 
-        steps {
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Run Maven tests'
+        )
 
-            bat '''
-                echo ================================
-                echo DOCKER VERIFICATION
-                echo ================================
-
-                echo.
-                echo DOCKER HOST:
-                echo %DOCKER_HOST%
-
-                echo.
-                echo DOCKER VERSION:
-                docker version
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo DOCKER SERVER:
-                docker info --format="Server: {{.ServerVersion}}"
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo DOCKER CONNECTION SUCCESSFUL
-                echo ================================
-            '''
-        }
+        booleanParam(
+            name: 'DEPLOY_TO_GKE',
+            defaultValue: true,
+            description: 'Deploy application to GKE'
+        )
     }
 
-    // ============================================================
-    // 4. BUILD
-    // ============================================================
-    stage('Build') {
+    environment {
 
-        options {
-            timeout(time: 10, unit: 'MINUTES')
-        }
+        // =========================
+        // APPLICATION
+        // =========================
+        APP_NAME = 'employment-management'
 
-        steps {
+        // =========================
+        // DOCKER HUB
+        // =========================
+        DOCKERHUB_USERNAME = 'YOUR_DOCKERHUB_USERNAME'
+        DOCKER_IMAGE = "${DOCKERHUB_USERNAME}/employment-management"
 
-            bat '''
-                echo ================================
-                echo MAVEN BUILD
-                echo ================================
+        // =========================
+        // GCP / GKE
+        // =========================
+        GCP_PROJECT = 'project-7e1069a7-5b78-49e8-9b8'
+        GCP_REGION = 'us-central1'
 
-                mvn -B -ntp package -DskipTests
-                if errorlevel 1 exit /b 1
+        GKE_CLUSTER = 'employee-managment-cluster-1'
+        GKE_LOCATION = 'us-central1'
 
-                echo.
-                echo ================================
-                echo MAVEN BUILD SUCCESSFUL
-                echo ================================
-            '''
-        }
+        // =========================
+        // KUBERNETES
+        // =========================
+        K8S_NAMESPACE = 'stateful-demo'
+        K8S_DEPLOYMENT = 'employment-management'
+
+        // =========================
+        // GOOGLE CLOUD SDK
+        // =========================
+        GCLOUD_HOME = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk'
+
+        CLOUDSDK_PYTHON = 'C:\\Users\\prajw_626z6xf\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\platform\\bundledpython\\python.exe'
+
+        // =========================
+        // DOCKER DESKTOP
+        // =========================
+        DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
+
+        // =========================
+        // GKE AUTH PLUGIN
+        // =========================
+        USE_GKE_GCLOUD_AUTH_PLUGIN = 'True'
     }
 
-    // ============================================================
-    // 5. TEST
-    // ============================================================
-    stage('Test') {
+    stages {
 
-        options {
-            timeout(time: 10, unit: 'MINUTES')
+        // =========================================================
+        // 1. ENVIRONMENT CHECK
+        // =========================================================
+        stage('Environment Check') {
+            steps {
+                bat '''
+                    echo ==========================================
+                    echo ENVIRONMENT CHECK
+                    echo ==========================================
+
+                    echo.
+                    echo Java Version:
+                    java -version
+
+                    echo.
+                    echo Maven Version:
+                    mvn -version
+
+                    echo.
+                    echo Docker Version:
+                    docker --version
+
+                    echo.
+                    echo Kubectl Version:
+                    kubectl version --client
+
+                    echo.
+                    echo Google Cloud Version:
+                    gcloud --version
+
+                    echo.
+                    echo Helm Version:
+                    helm version
+
+                    echo.
+                    echo Docker Host:
+                    echo %DOCKER_HOST%
+
+                    echo.
+                    echo Docker Hub Image:
+                    echo %DOCKER_IMAGE%:%IMAGE_TAG%
+
+                    echo ==========================================
+                '''
+            }
         }
 
-        environment {
-            TESTCONTAINERS_RYUK_DISABLED = 'true'
-        }
+        // =========================================================
+        // 2. CHECKOUT
+        // =========================================================
+        stage('Checkout') {
+            steps {
+                deleteDir()
 
-        steps {
-
-            bat '''
-                echo ================================
-                echo RUNNING MAVEN TESTS
-                echo ================================
-
-                echo.
-                echo DOCKER HOST:
-                echo %DOCKER_HOST%
-
-                echo.
-                echo RUNNING TESTCONTAINERS TESTS:
-
-                mvn -B -ntp test
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo TESTS COMPLETED SUCCESSFULLY
-                echo ================================
-            '''
-        }
-
-        post {
-
-            always {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.BRANCH}"]],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Manjunathamanjuu/Employment-Management.git',
+                        credentialsId: 'github-pat'
+                    ]]
+                ])
 
                 bat '''
-                    echo ================================
-                    echo CLEANING TESTCONTAINERS
-                    echo ================================
+                    echo.
+                    echo ==========================================
+                    echo GIT INFORMATION
+                    echo ==========================================
 
+                    git branch
+                    git log -1 --oneline
+
+                    echo ==========================================
+                '''
+            }
+        }
+
+        // =========================================================
+        // 3. DOCKER VERIFY
+        // =========================================================
+        stage('Docker Verify') {
+            steps {
+                bat '''
+                    echo ==========================================
+                    echo DOCKER VERIFY
+                    echo ==========================================
+
+                    docker version
+                    docker info
+
+                    echo ==========================================
+                '''
+            }
+        }
+
+        // =========================================================
+        // 4. MAVEN BUILD
+        // =========================================================
+        stage('Maven Build') {
+            steps {
+                bat '''
+                    echo ==========================================
+                    echo MAVEN BUILD
+                    echo ==========================================
+
+                    mvn -B -ntp clean package -DskipTests
+
+                    echo ==========================================
+                '''
+            }
+        }
+
+        // =========================================================
+        // 5. MAVEN TEST
+        // =========================================================
+        stage('Maven Test') {
+            when {
+                expression {
+                    return params.RUN_TESTS
+                }
+            }
+
+            steps {
+                bat '''
+                    echo ==========================================
+                    echo MAVEN TEST
+                    echo ==========================================
+
+                    set TESTCONTAINERS_RYUK_DISABLED=true
+
+                    mvn -B -ntp test
+
+                    echo.
+                    echo Cleaning Testcontainers...
                     for /f %%i in ('docker ps -aq --filter "label=org.testcontainers=true"') do docker rm -f %%i
 
-                    exit /b 0
+                    echo ==========================================
                 '''
             }
         }
-    }
 
-    // ============================================================
-    // 6. DOCKER BUILD
-    // ============================================================
-    stage('Docker Build') {
-
-        options {
-            timeout(time: 20, unit: 'MINUTES')
-        }
-
-        steps {
-
-            bat '''
-                echo ================================
-                echo DOCKER BUILD
-                echo ================================
-
-                echo.
-                echo DOCKER HOST:
-                echo %DOCKER_HOST%
-
-                echo.
-                echo BUILDING IMAGE:
-                echo %IMAGE_NAME%:%IMAGE_TAG%
-
-                echo.
-                echo ================================
-                echo STARTING DOCKER BUILD
-                echo ================================
-
-                docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo DOCKER IMAGE CREATED
-                echo ================================
-
-                echo.
-                echo IMAGE DETAILS:
-                docker images %IMAGE_NAME%:%IMAGE_TAG%
-
-                echo.
-                echo IMAGE SIZE:
-                docker image inspect %IMAGE_NAME%:%IMAGE_TAG% --format="Image size: {{.Size}} bytes"
-
-                echo.
-                echo EMPLOYMENT MANAGEMENT IMAGES:
-                docker images | findstr /i employment-management
-
-                echo.
-                echo ================================
-                echo DOCKER BUILD SUCCESSFUL
-                echo ================================
-            '''
-        }
-    }
-
-    // ============================================================
-    // 7. DOCKER PUSH
-    // ============================================================
-    stage('Docker Push') {
-
-        options {
-            timeout(time: 15, unit: 'MINUTES')
-        }
-
-        steps {
-
-            withCredentials([
-                file(
-                    credentialsId: 'gcp-jenkins-cicd',
-                    variable: 'GCP_KEY_FILE'
-                )
-            ]) {
+        // =========================================================
+        // 6. DOCKER BUILD
+        // =========================================================
+        stage('Docker Build') {
+            steps {
+                script {
+                    env.FINAL_IMAGE_TAG = params.IMAGE_TAG?.trim()
+                        ? params.IMAGE_TAG.trim()
+                        : env.BUILD_NUMBER
+                }
 
                 bat '''
-                    echo ================================
-                    echo DOCKER PUSH TO GAR
-                    echo ================================
+                    echo ==========================================
+                    echo DOCKER BUILD
+                    echo ==========================================
 
-                    set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
-                    set DOCKER_CONFIG=%WORKSPACE%\\.docker-%BUILD_NUMBER%
-                    set ACCESS_TOKEN_FILE=%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt
+                    echo Image:
+                    echo %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
 
-                    if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
-                    if not exist "%DOCKER_CONFIG%" mkdir "%DOCKER_CONFIG%"
-
-                    set PATH=%GCLOUD_HOME%\\bin;%PATH%
+                    docker build ^
+                        -t %DOCKER_IMAGE%:%FINAL_IMAGE_TAG% ^
+                        -t %DOCKER_IMAGE%:latest .
 
                     echo.
-                    echo ================================
-                    echo AUTHENTICATING GCP
-                    echo ================================
+                    echo Docker Images:
+                    docker images %DOCKER_IMAGE%
 
-                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo GENERATING ACCESS TOKEN
-                    echo ================================
-
-                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth print-access-token > "%ACCESS_TOKEN_FILE%"
-                    if errorlevel 1 (
-                        if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
-                        exit /b 1
-                    )
-
-                    echo.
-                    echo ================================
-                    echo DOCKER LOGIN TO GAR
-                    echo ================================
-
-                    docker login %GCP_REGION%-docker.pkg.dev -u oauth2accesstoken --password-stdin < "%ACCESS_TOKEN_FILE%"
-                    if errorlevel 1 (
-                        if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
-                        exit /b 1
-                    )
-
-                    echo.
-                    echo REMOVING ACCESS TOKEN FILE
-                    echo ================================
-
-                    if exist "%ACCESS_TOKEN_FILE%" del /q "%ACCESS_TOKEN_FILE%"
-
-                    echo.
-                    echo ================================
-                    echo LOCAL IMAGE
-                    echo ================================
-
-                    docker images %IMAGE_NAME%:%IMAGE_TAG%
-
-                    echo.
-                    echo IMAGE SIZE:
-                    docker image inspect %IMAGE_NAME%:%IMAGE_TAG% --format="Image size: {{.Size}} bytes"
-
-                    echo.
-                    echo ================================
-                    echo PUSHING IMAGE TO GAR
-                    echo ================================
-
-                    echo IMAGE:
-                    echo %IMAGE_NAME%:%IMAGE_TAG%
-
-                    docker push %IMAGE_NAME%:%IMAGE_TAG%
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo VERIFYING PUSHED IMAGE
-                    echo ================================
-
-                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" artifacts docker images describe "%IMAGE_NAME%:%IMAGE_TAG%" --project="%GCP_PROJECT%"
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo DOCKER PUSH SUCCESSFUL
-                    echo ================================
+                    echo ==========================================
                 '''
             }
         }
-    }
 
-    // ============================================================
-    // 8. KUBERNETES DEPLOY
-    // ============================================================
-    stage('Kubernetes Deploy') {
+        // =========================================================
+        // 7. DOCKER HUB PUSH
+        // =========================================================
+        stage('Docker Hub Push') {
+            steps {
 
-        options {
-            timeout(time: 10, unit: 'MINUTES')
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+
+                    bat '''
+                        echo ==========================================
+                        echo DOCKER HUB LOGIN
+                        echo ==========================================
+
+                        echo Logging into Docker Hub...
+
+                        docker login -u "%DOCKERHUB_USER%" -p "%DOCKERHUB_TOKEN%"
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Docker Hub login failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Docker Hub login successful.
+
+                        echo ==========================================
+                        echo PUSHING DOCKER IMAGE
+                        echo ==========================================
+
+                        docker push %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Docker image push failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Pushing latest tag...
+
+                        docker push %DOCKER_IMAGE%:latest
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Docker latest image push failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Docker Hub images pushed successfully.
+
+                        echo ==========================================
+                    '''
+                }
+            }
         }
 
-        steps {
+        // =========================================================
+        // 8. GKE AUTHENTICATION
+        // =========================================================
+        stage('GKE Authentication') {
+            when {
+                expression {
+                    return params.DEPLOY_TO_GKE
+                }
+            }
 
-            withCredentials([
-                file(
-                    credentialsId: 'gcp-jenkins-cicd',
-                    variable: 'GCP_KEY_FILE'
-                )
-            ]) {
+            steps {
 
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
+
+                    bat '''
+                        echo ==========================================
+                        echo GKE AUTHENTICATION
+                        echo ==========================================
+
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
+
+                        if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
+
+                        echo Activating GCP service account...
+
+                        gcloud auth activate-service-account ^
+                            --key-file="%GCP_KEY_FILE%" ^
+                            --project="%GCP_PROJECT%"
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo GCP authentication failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Getting GKE credentials...
+
+                        gcloud container clusters get-credentials ^
+                            %GKE_CLUSTER% ^
+                            --location %GKE_LOCATION% ^
+                            --project %GCP_PROJECT% ^
+                            --verbosity=error
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo GKE authentication failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Kubernetes Nodes:
+
+                        kubectl get nodes
+
+                        echo ==========================================
+                    '''
+                }
+            }
+        }
+
+        // =========================================================
+        // 9. KUBERNETES DEPLOY
+        // =========================================================
+        stage('Kubernetes Deploy') {
+            when {
+                expression {
+                    return params.DEPLOY_TO_GKE
+                }
+            }
+
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
+
+                    bat '''
+                        echo ==========================================
+                        echo KUBERNETES DEPLOYMENT
+                        echo ==========================================
+
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
+
+                        if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
+
+                        echo.
+                        echo Authenticating with GCP...
+
+                        gcloud auth activate-service-account ^
+                            --key-file="%GCP_KEY_FILE%" ^
+                            --project="%GCP_PROJECT%"
+
+                        echo.
+                        echo Getting GKE credentials...
+
+                        gcloud container clusters get-credentials ^
+                            %GKE_CLUSTER% ^
+                            --location %GKE_LOCATION% ^
+                            --project %GCP_PROJECT% ^
+                            --verbosity=error
+
+                        echo.
+                        echo Kubernetes Namespace:
+
+                        kubectl apply -f Kubernetes-manifests/namespace.yaml
+
+                        echo.
+                        echo Service Account:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/serviceaccount.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo Role:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/role.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo RoleBinding:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/rolebinding.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo ClusterRoleBinding:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/clusterrolebinding.yaml
+
+                        echo.
+                        echo PostgreSQL ConfigMap:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/postgres-configmap.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo PostgreSQL Secret:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/postgres-secret.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo Persistent Volume Claim:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/persistentvolumeclaim.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo PostgreSQL StatefulSet:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/statefulset.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo Headless Service:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/headless-service.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo Application Deployment:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/deployment.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo Application Service:
+
+                        kubectl apply ^
+                            -f Kubernetes-manifests/service.yaml ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo ==========================================
+                        echo UPDATING IMAGE
+                        echo ==========================================
+
+                        echo Docker Image:
+                        echo %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
+
+                        kubectl set image deployment/%K8S_DEPLOYMENT% ^
+                            %APP_NAME%=%DOCKER_IMAGE%:%FINAL_IMAGE_TAG% ^
+                            -n %K8S_NAMESPACE%
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Failed to update Kubernetes deployment image.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Waiting for rollout...
+
+                        kubectl rollout status ^
+                            deployment/%K8S_DEPLOYMENT% ^
+                            -n %K8S_NAMESPACE% ^
+                            --timeout=5m
+
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo Kubernetes rollout failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Kubernetes deployment completed successfully.
+
+                        echo ==========================================
+                    '''
+                }
+            }
+        }
+
+        // =========================================================
+        // 10. KUBERNETES VERIFY
+        // =========================================================
+        stage('Kubernetes Verify') {
+            when {
+                expression {
+                    return params.DEPLOY_TO_GKE
+                }
+            }
+
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: 'gcp-jenkins-cicd',
+                        variable: 'GCP_KEY_FILE'
+                    )
+                ]) {
+
+                    bat '''
+                        echo ==========================================
+                        echo KUBERNETES VERIFICATION
+                        echo ==========================================
+
+                        set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
+                        set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
+
+                        gcloud auth activate-service-account ^
+                            --key-file="%GCP_KEY_FILE%" ^
+                            --project="%GCP_PROJECT%"
+
+                        gcloud container clusters get-credentials ^
+                            %GKE_CLUSTER% ^
+                            --location %GKE_LOCATION% ^
+                            --project %GCP_PROJECT% ^
+                            --verbosity=error
+
+                        echo.
+                        echo ==========================================
+                        echo DEPLOYMENT
+                        echo ==========================================
+
+                        kubectl get deployment ^
+                            %K8S_DEPLOYMENT% ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo ==========================================
+                        echo PODS
+                        echo ==========================================
+
+                        kubectl get pods ^
+                            -n %K8S_NAMESPACE% ^
+                            -o wide
+
+                        echo.
+                        echo ==========================================
+                        echo SERVICES
+                        echo ==========================================
+
+                        kubectl get svc ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo ==========================================
+                        echo PVC
+                        echo ==========================================
+
+                        kubectl get pvc ^
+                            -n %K8S_NAMESPACE%
+
+                        echo.
+                        echo ==========================================
+                        echo DEPLOYMENT IMAGE
+                        echo ==========================================
+
+                        kubectl get deployment ^
+                            %K8S_DEPLOYMENT% ^
+                            -n %K8S_NAMESPACE% ^
+                            -o jsonpath="{.spec.template.spec.containers[0].image}"
+
+                        echo.
+
+                        echo.
+                        echo ==========================================
+                        echo ROLLOUT STATUS
+                        echo ==========================================
+
+                        kubectl rollout status ^
+                            deployment/%K8S_DEPLOYMENT% ^
+                            -n %K8S_NAMESPACE% ^
+                            --timeout=5m
+
+                        echo.
+                        echo ==========================================
+                        echo KUBERNETES DEPLOYMENT VERIFIED
+                        echo ==========================================
+                    '''
+                }
+            }
+        }
+
+        // =========================================================
+        // 11. PIPELINE SUMMARY
+        // =========================================================
+        stage('Pipeline Summary') {
+            steps {
                 bat '''
-                    echo ================================
-                    echo GKE AUTHENTICATION
-                    echo ================================
-
-                    set PATH=%GCLOUD_HOME%\\bin;%PATH%
-
-                    set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
-                    set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
-
-                    if not exist "%CLOUDSDK_CONFIG%" mkdir "%CLOUDSDK_CONFIG%"
+                    echo.
+                    echo ==================================================
+                    echo              PIPELINE SUMMARY
+                    echo ==================================================
 
                     echo.
-                    echo CLOUDSDK CONFIG:
-                    echo %CLOUDSDK_CONFIG%
+                    echo Application:
+                    echo %APP_NAME%
 
                     echo.
-                    echo KUBECONFIG:
-                    echo %KUBECONFIG%
+                    echo Docker Image:
+                    echo %DOCKER_IMAGE%:%FINAL_IMAGE_TAG%
 
                     echo.
-                    echo GKE CLUSTER:
+                    echo GCP Project:
+                    echo %GCP_PROJECT%
+
+                    echo.
+                    echo GKE Cluster:
                     echo %GKE_CLUSTER%
 
                     echo.
-                    echo GKE LOCATION:
-                    echo %GKE_LOCATION%
+                    echo Kubernetes Namespace:
+                    echo %K8S_NAMESPACE%
 
                     echo.
-                    echo ================================
-                    echo VERIFYING GKE AUTH PLUGIN
-                    echo ================================
-
-                    where gke-gcloud-auth-plugin.exe
-                    if errorlevel 1 exit /b 1
-
-                    "%GCLOUD_HOME%\\bin\\gke-gcloud-auth-plugin.exe" --version
-                    if errorlevel 1 exit /b 1
+                    echo Kubernetes Deployment:
+                    echo %K8S_DEPLOYMENT%
 
                     echo.
-                    echo ================================
-                    echo AUTHENTICATING GCP SERVICE ACCOUNT
-                    echo ================================
-
-                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" auth activate-service-account --key-file="%GCP_KEY_FILE%" --project="%GCP_PROJECT%"
-                    if errorlevel 1 exit /b 1
+                    echo Build Number:
+                    echo %BUILD_NUMBER%
 
                     echo.
-                    echo ================================
-                    echo GETTING GKE CREDENTIALS
-                    echo ================================
+                    echo Pipeline completed successfully.
 
-                    call "%GCLOUD_HOME%\\bin\\gcloud.cmd" container clusters get-credentials %GKE_CLUSTER% --location %GKE_LOCATION% --project %GCP_PROJECT% --verbosity=error
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo VERIFYING KUBECONFIG
-                    echo ================================
-
-                    if not exist "%KUBECONFIG%" (
-                        echo ERROR: Kubeconfig file was not created.
-                        exit /b 1
-                    )
-
-                    echo Kubeconfig file created successfully.
-
-                    echo.
-                    echo ================================
-                    echo VERIFYING KUBERNETES CLUSTER
-                    echo ================================
-
-                    kubectl get nodes
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo APPLYING NAMESPACE
-                    echo ================================
-
-                    kubectl apply -f Kubernetes-manifests/namespace.yaml
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo APPLYING POSTGRES CONFIGMAP
-                    echo ================================
-
-                    kubectl apply -f Kubernetes-manifests/postgres-configmap.yaml
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo APPLYING POSTGRES SECRET
-                    echo ================================
-
-                    kubectl apply -f Kubernetes-manifests/postgres-secret.yaml
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo APPLYING SERVICE
-                    echo ================================
-
-                    kubectl apply -f Kubernetes-manifests/service.yaml
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo APPLYING DEPLOYMENT
-                    echo ================================
-
-                    kubectl apply -f Kubernetes-manifests/deployment.yaml
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo UPDATING DEPLOYMENT IMAGE
-                    echo ================================
-
-                    echo IMAGE:
-                    echo %IMAGE_NAME%:%IMAGE_TAG%
-
-                    kubectl set image deployment/%K8S_DEPLOYMENT% %K8S_DEPLOYMENT%=%IMAGE_NAME%:%IMAGE_TAG% -n %K8S_NAMESPACE%
-                    if errorlevel 1 exit /b 1
-
-                    echo.
-                    echo ================================
-                    echo KUBERNETES DEPLOYMENT APPLIED
-                    echo ================================
+                    echo ==================================================
                 '''
             }
         }
     }
 
-    // ============================================================
-    // 9. VERIFY DEPLOYMENT
-    // ============================================================
-    stage('Verify Deployment') {
+    // =============================================================
+    // POST ACTIONS
+    // =============================================================
+    post {
 
-        options {
-            timeout(time: 10, unit: 'MINUTES')
+        success {
+            echo '=========================================='
+            echo 'PIPELINE SUCCESSFUL'
+            echo '=========================================='
+            echo "Docker Image: ${env.DOCKER_IMAGE}:${env.FINAL_IMAGE_TAG}"
         }
 
-        steps {
+        failure {
+            echo '=========================================='
+            echo 'PIPELINE FAILED'
+            echo '=========================================='
+            echo 'Please check the Jenkins console output.'
+        }
 
+        always {
             bat '''
-                echo ================================
-                echo VERIFY KUBERNETES DEPLOYMENT
-                echo ================================
-
-                set PATH=%GCLOUD_HOME%\\bin;%PATH%
-
-                set CLOUDSDK_CONFIG=%WORKSPACE%\\.gcloud-%BUILD_NUMBER%
-                set KUBECONFIG=%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%
-
                 echo.
-                echo CLOUDSDK CONFIG:
-                echo %CLOUDSDK_CONFIG%
+                echo Cleaning temporary authentication files...
 
-                echo.
-                echo KUBECONFIG:
-                echo %KUBECONFIG%
+                if exist "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%"
 
-                if not exist "%KUBECONFIG%" (
-                    echo ERROR: Kubeconfig file does not exist.
-                    exit /b 1
-                )
+                if exist "%WORKSPACE%\\.docker-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.docker-%BUILD_NUMBER%"
 
-                echo.
-                echo ================================
-                echo PODS
-                echo ================================
+                if exist "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%" del /f /q "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%"
 
-                kubectl get pods -n %K8S_NAMESPACE%
-                if errorlevel 1 exit /b 1
+                if exist "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt" del /f /q "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt"
 
-                echo.
-                echo ================================
-                echo SERVICES
-                echo ================================
-
-                kubectl get svc -n %K8S_NAMESPACE%
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo DEPLOYMENT
-                echo ================================
-
-                kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE%
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo DEPLOYMENT IMAGE
-                echo ================================
-
-                kubectl get deployment %K8S_DEPLOYMENT% -n %K8S_NAMESPACE% -o jsonpath="{.spec.template.spec.containers[0].image}"
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo.
-                echo ================================
-                echo ROLLOUT STATUS
-                echo ================================
-
-                kubectl rollout status deployment/%K8S_DEPLOYMENT% -n %K8S_NAMESPACE% --timeout=180s
-                if errorlevel 1 exit /b 1
-
-                echo.
-                echo ================================
-                echo KUBERNETES DEPLOYMENT VERIFIED
-                echo ================================
+                echo Temporary files cleaned.
             '''
+
+            cleanWs()
         }
     }
-}
-
-// ============================================================
-// POST ACTIONS
-// ============================================================
-post {
-
-    success {
-
-        echo '================================'
-        echo 'CI/CD PIPELINE SUCCESSFUL'
-        echo '================================'
-        echo 'Build -> Test -> Docker Build -> Docker Push -> Kubernetes Deploy -> Verify'
-    }
-
-    failure {
-
-        echo '================================'
-        echo 'CI/CD PIPELINE FAILED'
-        echo '================================'
-        echo 'Check the console output for the failed stage.'
-    }
-
-    aborted {
-
-        echo '================================'
-        echo 'CI/CD PIPELINE ABORTED'
-        echo '================================'
-        echo 'The pipeline exceeded its configured timeout or was manually stopped.'
-    }
-
-    always {
-
-        echo 'Pipeline execution completed.'
-
-        bat '''
-            echo.
-            echo ================================
-            echo CLEANING JENKINS TEMP CONFIG
-            echo ================================
-
-            if exist "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.gcloud-%BUILD_NUMBER%"
-            if exist "%WORKSPACE%\\.docker-%BUILD_NUMBER%" rmdir /s /q "%WORKSPACE%\\.docker-%BUILD_NUMBER%"
-            if exist "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%" del /q "%WORKSPACE%\\.kubeconfig-%BUILD_NUMBER%"
-            if exist "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt" del /q "%WORKSPACE%\\.gcp-token-%BUILD_NUMBER%.txt"
-
-            exit /b 0
-        '''
-    }
-}
-
-
 }
