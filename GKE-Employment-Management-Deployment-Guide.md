@@ -688,7 +688,7 @@ spec:
   addresses:
     - type: NamedAddress
       value: cloudaiops-gateway-ip
-  listeners:
+  l`isteners:
     - name: https
       protocol: HTTPS
       port: 443

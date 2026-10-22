@@ -1,0 +1,624 @@
+---
+# Source: employment-management/charts/tomcat/templates/networkpolicy.yaml
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: employment-management-tomcat
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: employment-management
+      app.kubernetes.io/name: tomcat
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    - ports:
+        - port: 8180
+          protocol: TCP
+
+---
+# Source: employment-management/charts/tomcat/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: employment-management-tomcat
+  namespace: default
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: employment-management
+      app.kubernetes.io/name: tomcat
+
+---
+# Source: employment-management/charts/tomcat/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: employment-management-tomcat
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+automountServiceAccountToken: false
+---
+# Source: employment-management/charts/tomcat/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: employment-management-tomcat
+  namespace: default
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+type: Opaque
+data:
+  tomcat-username: "dXNlcg=="
+  tomcat-password: "SVhHT09XQ1M2Vw=="
+---
+# Source: employment-management/templates/postgres-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: employment-management-postgres
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  POSTGRES_USER: "postgres"
+  POSTGRES_PASSWORD: "postgres"
+---
+# Source: employment-management/templates/tls-secret.yaml
+apiVersion: v1
+kind: Secret
+
+metadata:
+  name: cloudaiops-tls
+  namespace: default
+
+type: kubernetes.io/tls
+
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tDQpNSUlFQVRDQ0F1bWdBd0lCQWdJVVFwTXptdUpkU0pBTDM1WjFjalE5MnRiMkVmUXdEUVlKS29aSWh2Y05BUUVMDQpCUUF3ZWpFTE1Ba0dBMVVFQmhNQ1NVNHhFakFRQmdOVkJBZ01DVXRoY201aGRHRnJZVEVTTUJBR0ExVUVCd3dKDQpRbUZ1WjJGc2IzSmxNUk13RVFZRFZRUUtEQXBEYkc5MVpFRkpUM0J6TVJRd0VnWURWUVFMREF0RVpYWmxiRzl3DQpiV1Z1ZERFWU1CWUdBMVVFQXd3UFkyeHZkV1JoYVc5d2N5NXphWFJsTUI0WERUSTJNRGt3TXpBNE1UZ3lORm9YDQpEVEkzTURrd016QTRNVGd5TkZvd2VqRUxNQWtHQTFVRUJoTUNTVTR4RWpBUUJnTlZCQWdNQ1V0aGNtNWhkR0ZyDQpZVEVTTUJBR0ExVUVCd3dKUW1GdVoyRnNiM0psTVJNd0VRWURWUVFLREFwRGJHOTFaRUZKVDNCek1SUXdFZ1lEDQpWUVFMREF0RVpYWmxiRzl3YldWdWRERVlNQllHQTFVRUF3d1BZMnh2ZFdSaGFXOXdjeTV6YVhSbE1JSUJJakFODQpCZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUEwWFBtdk5UU20rM3FaclUzbThsemUxTG9hbklNDQo1Zkt0MFlJamY4L0tQNGZKVVo0NjhsczVvc0p6L0U4Q2d5OGVMQ2ZxZEd6N2Mvbkp3ako1cDNoZ3YzSEQ3Vlo0DQptanVzNUJ4SlR0N2dzZjhXeHVVZ0xrVGdTQUFaczY5Ni94QmE3dEx2cnkyQlRVU0tzNGpQZkFYeDFXSFQ0TmdpDQpqZ1hiQXpYSVRUV01CbGtUUmk2Sk1QcHJrZ2VRZjllWnJzTkFGamJCdmYwbDNqdDAzR0k1R0NTYnczTnNOL1ZnDQpoQS9CZXRkTjFOOUtJNEpzK2IramZDTHptM2NUMWExOHF0Q2Y4NEU2cmVZOEFwTzNzYmI0dzBsV1Ntak5XYktNDQpKaENib0Zmek90aFlheEtyVFViMG43NHZ1d1JTQ2F3MmhGVHZFcUV4blVvWnNxN01ZSnNvUm9xVHVRSURBUUFCDQpvMzh3ZlRBdkJnTlZIUkVFS0RBbWdnOWpiRzkxWkdGcGIzQnpMbk5wZEdXQ0UzZDNkeTVqYkc5MVpHRnBiM0J6DQpMbk5wZEdVd0NRWURWUjBUQkFJd0FEQUxCZ05WSFE4RUJBTUNCYUF3RXdZRFZSMGxCQXd3Q2dZSUt3WUJCUVVIDQpBd0V3SFFZRFZSME9CQllFRk5RUFovaE5YMG1NV0FiL0JZTDIrOXJYb2o1dk1BMEdDU3FHU0liM0RRRUJDd1VBDQpBNElCQVFCQnB6UjNpZlcveXdMSWFYU3hMOXBsWGRBenYxdFNDZVNNWGpLMFExcGZzUDZKSjZjNXZBcWtJcjZ3DQpzUmJwSDhRUXJxa3p6MXZQL1htNW9FZ1hGMnU0Y3QvcXNUUXNpTCtjaWJXdWNJMzZ6QkVyQlhFL21xYjE4UG9VDQpwVWlsNDRINjhqWFV2SjBXTnNvaVlKbWtJYXRYOFpnSTB3c2pDR2RWdmpMRUhCYzd5RWxIMTNpeVlOTVN1QzF6DQpQTWc1NTQzYWlvcXhFcXRSV3ZNaTNjbkYyN29zcG0wK0pIbWJZUEVUcmJVY1BKRUFCVmt5c3d6MG9qTUpyT1BRDQo4K0ZwaDZXYjI1QmZWbDVjcGlSdjhIZjRSRWg5Nmk1RnNtZGJKYWhXeEYvYzUyNkhiOS9PeWtGOURKWFlRdDIrDQpXc3Q2dWxDOGlGek54VHlsYk5pcTdpVDR0dUgwDQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tDQo=
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tDQpNSUlFdmdJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURSYythODFOS2I3ZXBtDQp0VGVieVhON1V1aHFjZ3psOHEzUmdpTi96OG8vaDhsUm5qcnlXem1pd25QOFR3S0RMeDRzSitwMGJQdHorY25DDQpNbm1uZUdDL2NjUHRWbmlhTzZ6a0hFbE8zdUN4L3hiRzVTQXVST0JJQUJtenIzci9FRnJ1MHUrdkxZRk5SSXF6DQppTTk4QmZIVllkUGcyQ0tPQmRzRE5jaE5OWXdHV1JOR0xva3crbXVTQjVCLzE1bXV3MEFXTnNHOS9TWGVPM1RjDQpZamtZSkp2RGMydzM5V0NFRDhGNjEwM1UzMG9qZ216NXY2TjhJdk9iZHhQVnJYeXEwSi96Z1RxdDVqd0NrN2V4DQp0dmpEU1ZaS2FNMVpzb3dtRUp1Z1YvTTYyRmhyRXF0TlJ2U2Z2aSs3QkZJSnJEYUVWTzhTb1RHZFNobXlyc3hnDQpteWhHaXBPNUFnTUJBQUVDZ2dFQUJFRWsrbExlTWM1a3A0cll0YkhZZTRuRGl6ajU3UzJrelUwRjkxTHpVTjhnDQpyakh4ME5TSFN5TkZHNXZkRS80cXBZWGgzNytnZG0vb0dCNmN4Uk9mV2MxLzU5Nk0weXVHajNqSnlPcU5vM1B5DQo1SjN6Ylc2QnBKakM3T09uUFdQWnlGWXhkSmJ1MUh1QnBUNndkenlWZ2xWTEZRVzlqWnk0YTRibHhMZ09HaDYwDQpQUE8xRDUrMXAyaGxLNzBDdUkySjNOd0VXcTBCQmhZU0ZqV2xNN0o5eWVaeEV0THNlZWF2S0tKYjJhYjdVT3JDDQpXT3c4WUpSOStJMC9nNFd3RG4vQ3FQR3BSdDRTUHptbEtVRUY1bnJHeWhhVzhNVEFqYWpyZGJyVFdBbWN6SHNODQo3TU5Id21JMGFYeFh1WU9GN0daMkZOUXBMdEZlcXE3RUhpVzFkdDcwZ1FLQmdRRHowNHc0MytiWGNEWUxuYVhODQpSNVptMlJncFBnQVA0OTEwOVdZNU4rQ3JYdkFjVXE2aElFMG1DRnF4OXBGWm1DUDdkZ3VNWmhGVFFWUXlTcmxODQpkWHkvOTVZODhrNUsvWTJJSklaMllpRXhyMGZ1TTIwSVUwc0ZSazRCV2U3QUdGZU5XRVJtYkxJV3V6SUdtNXNTDQpWckpSYlZ1U25XalBVTkJhM3N4T2RJc2dnUUtCZ1FEYjZRSmFNRmt1STVaN1hONEFMM1BibzE2YjFBZWYxQkJpDQovNWhVWkpsajBraWRsNnBKNUYzSmU4TWR3TlZ4RUk4SndSQzNXRSsvWXBoKzh5TWZ3NHFhaDdZSVI3TzFML1lZDQpDNkNzcDRYamhTd3lPcWkzR1JLeCtaczU2bWh4MGVYVjBqb20zZ08vWVVGKzEreVJMTGhMUEF5OGQzSEpyZG5WDQptRitPV1VUWE9RS0JnUUMxamJ6b2tKZlRyVU1nN1JjTFBwWFlLU2liZFFZWXp1UVVkYkhUUXk4d2k3V2djVlNFDQp0NGVhblRmak1hVFRJTDBTUGJpbHAwNlpQcGpTQmQvcXRHUGFrU0cyYWZvd1RwSTNZSE1hN1VDb1BVc0RMQm13DQp6RXlkTmRkWm5EeHhudTU2V2RJOHJnMEJiZ3YyN2FEUFMremxRdGVmMlVPMHN3a2gwS295ZFFjdmdRS0JnQXhEDQpyM3ptSzJNV1d3TWdSOFZNNERKRXB6Y2JtUjFCejNRbCt4SGgxbWdweHlENjMyVmxsaEZ4bEkwcFB2NGlSVWZ1DQorNGF1Snl4dVRFRHdRR282RnBYTnNjbytiWGhTWjNBcDNka2pNcVZndlBsRUtqcWo3RlgrckxpTEtTNEgzY0NTDQpDK28xQVpKLzB3NUc3b3VlS2QwUVNVbU5nOHdTcFE1emhBakZVOENKQW9HQkFKV2hQMzRzRXdUdzB3YVRKd0gyDQpMbkR3aDlmZnNMSDdFY2lSTzhwUTdXTjRlL3VMMmQ2RnhjODFIREJaS1RMa2RnUGdGR1NKYW84YkhWTzBZYURhDQpnNytWc2F6NHdEUk9OS0ZtK1ZZOTN5dC9ORmZXR1VRRmlwRTIxZU1zc3huWVB4V2tEZFdxSllsNU9XNVVuUWY0DQp0akkxR1R6eHdPKzFvNW9NNjNQK1NTOEINCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0NCg==
+
+---
+# Source: employment-management/templates/postgres-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: employment-management-postgres
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  POSTGRES_DB: "employee-managementdb"
+---
+# Source: employment-management/charts/tomcat/templates/pvc.yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: employment-management-tomcat
+  namespace: default
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+  
+---
+# Source: employment-management/charts/tomcat/templates/svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: employment-management-tomcat
+  namespace: default
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8180
+      targetPort: http
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/name: tomcat
+
+---
+# Source: employment-management/templates/headless-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: employment-management-postgres
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: employment-management-postgres
+    app.kubernetes.io/instance: employment-management
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# Source: employment-management/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: employment-management
+  labels:
+    app: employment-management
+spec:
+  type: ClusterIP
+  selector:
+    app: employment-management
+  ports:
+    - name: http
+      port: 8180
+      targetPort: 8180
+      protocol: TCP
+---
+# Source: employment-management/charts/tomcat/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employment-management-tomcat
+  namespace: default
+  labels:
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: tomcat
+    app.kubernetes.io/version: 11.0.26
+    helm.sh/chart: tomcat-13.6.26
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: employment-management
+      app.kubernetes.io/name: tomcat
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: employment-management
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: tomcat
+        app.kubernetes.io/version: 11.0.26
+        helm.sh/chart: tomcat-13.6.26
+    spec:
+      
+      automountServiceAccountToken: false
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: employment-management
+                    app.kubernetes.io/name: tomcat
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      serviceAccountName: employment-management-tomcat
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      initContainers:
+      containers:
+        - name: tomcat
+          image: registry-1.docker.io/bitnami/tomcat:latest
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: TOMCAT_USERNAME_FILE
+              value: /opt/bitnami/tomcat/secrets/tomcat-username
+            - name: TOMCAT_PASSWORD_FILE
+              value: /opt/bitnami/tomcat/secrets/tomcat-password
+            - name: OPENSSL_FIPS
+              value: "yes"
+            - name: JAVA_TOOL_OPTIONS
+              value: "--module-path=/opt/bitnami/bc-fips/ -Djava.security.properties==/opt/bitnami/java/conf/security/java.security.restricted"
+            - name: TOMCAT_INSTALL_DEFAULT_WEBAPPS
+              value: "no"
+            - name: TOMCAT_ALLOW_REMOTE_MANAGEMENT
+              value: "no"
+            - name: TOMCAT_HTTP_PORT_NUMBER
+              value: "8180"
+          ports:
+            - name: http
+              containerPort: 8180
+          livenessProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 6
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 380m
+              ephemeral-storage: 2Gi
+              memory: 384Mi
+            requests:
+              cpu: 250m
+              ephemeral-storage: 50Mi
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/tomcat
+            - name: empty-dir
+              mountPath: /opt/bitnami/tomcat/temp
+              subPath: app-tmp-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/tomcat/conf
+              subPath: app-conf-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/tomcat/logs
+              subPath: app-logs-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/tomcat/work
+              subPath: app-work-dir
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            - name: tomcat-secrets
+              mountPath: /opt/bitnami/tomcat/secrets
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+        - name: tomcat-secrets
+          projected:
+            sources:
+              - secret:
+                  name: employment-management-tomcat
+        - name: data
+          persistentVolumeClaim:
+            claimName: employment-management-tomcat
+
+---
+# Source: employment-management/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employment-management-employment-management
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: employment-management
+      app.kubernetes.io/instance: employment-management
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: employment-management
+        app.kubernetes.io/instance: employment-management
+
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: employment-management
+          image: "us-central1-docker.pkg.dev/gcp-dev-july-2026/employment-management/employment-management:3.0.0"
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8180
+              protocol: TCP
+
+          env:
+            - name: POSTGRES_HOST
+              value: "employment-management-postgres"
+
+            - name: POSTGRES_PORT
+              value: "5432"
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_PASSWORD
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+
+          startupProbe:
+            httpGet:
+              path: /api/employees
+              port: 8180
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+
+          readinessProbe:
+            httpGet:
+              path: /api/employees
+              port: 8180
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          livenessProbe:
+            httpGet:
+              path: /api/employees
+              port: 8180
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+# Source: employment-management/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: employment-management-postgres
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: employment-management-postgres
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: employment-management-postgres
+      app.kubernetes.io/instance: employment-management
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: employment-management-postgres
+        app.kubernetes.io/instance: employment-management
+
+    spec:
+      securityContext:
+        fsGroup: 999
+
+      containers:
+        - name: postgres
+          image: "postgres:18"
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: employment-management-postgres
+                  key: POSTGRES_PASSWORD
+
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard-rwo
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Source: employment-management/templates/gateway.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: employment-management-gateway
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+
+  addresses:
+    - type: NamedAddress
+      value: cloudaiops-gateway-ip
+
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: cloudaiops-tls
+            kind: Secret
+
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+# Source: employment-management/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: employment-management-route
+  namespace: default
+  labels:
+    helm.sh/chart: employment-management-0.1.0
+    app.kubernetes.io/name: employment-management
+    app.kubernetes.io/instance: employment-management
+    app.kubernetes.io/version: "3.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+spec:
+  hostnames:
+    - "cloudaiops.site"
+
+  parentRefs:
+    - name: employment-management-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+      sectionName: https
+
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+      backendRefs:
+        - name: employment-management
+          port: 8180

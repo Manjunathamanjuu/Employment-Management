@@ -26,6 +26,9 @@ spec:
         app: employment-management
 
     spec:
+      # ServiceAccount used by the Pod
+      serviceAccountName: employment-management-sa
+
       # Pod-level security context
       securityContext:
         runAsNonRoot: true
@@ -39,17 +42,13 @@ spec:
         - name: employment-management
 
           image: us-central1-docker.pkg.dev/project-7e1069a7-5b78-49e8-9b8/quickstart-docker-repo/employment-management:1.0.0
-
           imagePullPolicy: IfNotPresent
 
+          # Application runs on 8180
           ports:
             - name: http
-<<<<<<< HEAD
-              containerPort: 8180
-=======
               containerPort: 8180
               protocol: TCP
->>>>>>> upstream/feature/Employment-Management
 
           # PostgreSQL configuration
           env:

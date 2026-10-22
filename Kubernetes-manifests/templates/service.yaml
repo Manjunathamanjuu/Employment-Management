@@ -10,6 +10,6 @@ spec:
     app: employment-management
   ports:
     - name: http
-      port: 8080
-      targetPort: 8080
+      port: 8180
+      targetPort: 8180
       protocol: TCP

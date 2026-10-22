@@ -22,7 +22,7 @@ services:
     image: employment-management:latest
     container_name: employment-management
     ports:
-      - "8080:8080"
+      - "8180:8180"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

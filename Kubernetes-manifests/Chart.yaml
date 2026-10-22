@@ -4,3 +4,8 @@ description: A Helm chart for Employment Management application with PostgreSQL 
 type: application
 version: 0.1.0
 appVersion: "3.0.0"
+
+dependencies:
+  - name: tomcat
+    version: "13.6.26"
+    repository: "https://charts.bitnami.com/bitnami"

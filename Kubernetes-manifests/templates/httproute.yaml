@@ -6,6 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "employment-management.labels" . | nindent 4 }}
+
 spec:
   hostnames:
     - {{ .Values.gateway.hostname | quote }}
@@ -23,6 +24,6 @@ spec:
             value: /
 
       backendRefs:
-        - name: {{ include "employment-management.fullname" . }}
+        - name: employment-management
           port: {{ .Values.app.service.port }}
 {{- end }}
